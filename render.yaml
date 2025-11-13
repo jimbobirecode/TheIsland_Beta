@@ -1,0 +1,67 @@
+# Render Blueprint for The Island Golf Club
+# ===========================================
+# This file enables automatic deployment of both services
+
+services:
+  # Email Bot Service
+  - type: web
+    name: theisland-email-bot
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: FROM_EMAIL
+        value: bookings@theislandgolfclub.ie
+      - key: FROM_NAME
+        value: The Island Golf Club
+      - key: DATABASE_URL
+        fromDatabase:
+          name: theisland-db
+          property: connectionString
+      - key: PER_PLAYER_FEE
+        value: "325.00"
+      - key: DEFAULT_COURSE_ID
+        value: theisland
+      - key: TRACKING_EMAIL_PREFIX
+        value: theisland
+      - key: CLUB_BOOKING_EMAIL
+        value: bookings@theislandgolfclub.ie
+      - key: DASHBOARD_API_URL
+        value: https://theisland-dashboard.onrender.com
+      - key: PORT
+        value: "10000"
+    healthCheckPath: /health
+
+  # Dashboard Service
+  - type: web
+    name: theisland-dashboard
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run island_dashboard.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: theisland-db
+          property: connectionString
+      - key: PER_PLAYER_FEE
+        value: "325.00"
+      - key: DEFAULT_COURSE_ID
+        value: theisland
+      - key: DASHBOARD_PASSWORD
+        sync: false
+
+databases:
+  - name: theisland-db
+    plan: starter
+    databaseName: theisland_bookings
+    user: theisland_admin
