@@ -493,49 +493,184 @@ def update_booking_status(booking_id: str, status: str, notes: str = None) -> bo
 
 @app.route('/webhook/inbound', methods=['POST'])
 def inbound_webhook():
-    """Handle incoming emails from SendGrid"""
+    """Handle incoming emails from Email Relay (bookings.teemail.io)"""
+    request_id = datetime.utcnow().strftime('%Y%m%d-%H%M%S-%f')[:20]
+    
     try:
-        # Parse incoming email
+        logging.info("=" * 80)
+        logging.info(f"📨 WEBHOOK TRIGGERED [{request_id}]")
+        logging.info("=" * 80)
+        
+        # Parse incoming email data
         data = request.form
+        
+        # Log what we received
+        logging.info(f"📦 Received {len(data)} form fields:")
+        for key in data.keys():
+            value = data.get(key, '')
+            if key in ['text', 'html', 'email']:
+                logging.info(f"   {key}: {len(value)} chars")
+            else:
+                logging.info(f"   {key}: {value[:100]}")
+        
+        # Extract email fields
         from_email = data.get('from', '')
+        to_email = data.get('to', '')
         subject = data.get('subject', '')
         text_body = data.get('text', '')
         html_body = data.get('html', '')
         
-        logging.info(f"Received email from: {from_email}")
-        logging.info(f"Subject: {subject}")
+        logging.info("")
+        logging.info("📧 Email Details:")
+        logging.info(f"   From: {from_email}")
+        logging.info(f"   To: {to_email}")
+        logging.info(f"   Subject: {subject}")
+        logging.info(f"   Text Body: {len(text_body)} chars")
+        logging.info(f"   HTML Body: {len(html_body)} chars")
         
-        # Parse booking request
-        # You would integrate your NLP parsing here
-        # For now, using a simple example
+        if text_body:
+            logging.info("")
+            logging.info("📄 Text Body Preview (first 500 chars):")
+            logging.info(text_body[:500])
         
+        # Validate required fields
+        if not from_email:
+            logging.error("❌ Missing required field: from")
+            return jsonify({
+                'status': 'error',
+                'message': 'Missing from field',
+                'request_id': request_id
+            }), 400
+        
+        if not subject and not text_body:
+            logging.error("❌ Missing both subject and text body")
+            return jsonify({
+                'status': 'error',
+                'message': 'Missing subject and text body',
+                'request_id': request_id
+            }), 400
+        
+        # Extract clean email address
+        sender_email = from_email
+        sender_name = "Visitor"
+        
+        if '<' in from_email:
+            # Format: "John Doe <john@example.com>"
+            parts = from_email.split('<')
+            sender_name = parts[0].strip().strip('"')
+            sender_email = parts[1].strip('>')
+            logging.info(f"   Extracted name: {sender_name}")
+            logging.info(f"   Extracted email: {sender_email}")
+        else:
+            # Use email username as name
+            sender_name = sender_email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
+            logging.info(f"   Generated name from email: {sender_name}")
+        
+        # Create booking with received data
         booking_id = str(uuid.uuid4())[:8]
+        
         booking_data = {
             'id': booking_id,
-            'name': 'Visitor Name',  # Extract from email
-            'email': from_email,
+            'name': sender_name,
+            'email': sender_email,
             'phone': 'N/A',
-            'num_players': 4,
-            'preferred_date': 'TBD',
-            'preferred_time': 'TBD',
+            'num_players': 4,  # Default - TODO: parse from email body
+            'preferred_date': 'TBD',  # TODO: parse from email body
+            'preferred_time': 'TBD',  # TODO: parse from email body
             'alternate_date': None,
-            'special_requests': text_body[:500],
+            'special_requests': text_body[:500] if text_body else subject,
             'status': 'provisional',
             'course_id': DEFAULT_COURSE_ID
         }
         
+        logging.info("")
+        logging.info(f"📋 Creating Booking:")
+        logging.info(f"   ID: {booking_id}")
+        logging.info(f"   Name: {sender_name}")
+        logging.info(f"   Email: {sender_email}")
+        logging.info(f"   Players: {booking_data['num_players']}")
+        logging.info(f"   Date: {booking_data['preferred_date']}")
+        logging.info(f"   Time: {booking_data['preferred_time']}")
+        
         # Store in database
-        store_booking_in_db(booking_data)
+        logging.info("")
+        logging.info("💾 Storing in database...")
+        db_stored = store_booking_in_db(booking_data)
+        
+        if db_stored:
+            logging.info("✅ Database: SUCCESS")
+        else:
+            logging.error("❌ Database: FAILED")
+            logging.error("   Check DATABASE_URL environment variable")
+            logging.error("   Check database connection and schema")
         
         # Send provisional confirmation email
-        html_email = format_provisional_email(booking_data)
-        send_email(from_email, "Your Island Golf Club Booking Request", html_email)
+        logging.info("")
+        logging.info("📧 Sending confirmation email...")
+        email_sent = False
         
-        return jsonify({'status': 'success', 'booking_id': booking_id}), 200
+        try:
+            if not SENDGRID_API_KEY:
+                logging.error("❌ SENDGRID_API_KEY not set!")
+                logging.error("   Cannot send confirmation email")
+            else:
+                html_email = format_provisional_email(booking_data)
+                email_sent = send_email(
+                    sender_email,
+                    "Your Island Golf Club Booking Request",
+                    html_email
+                )
+                
+                if email_sent:
+                    logging.info("✅ Email: SUCCESS")
+                    logging.info(f"   Sent to: {sender_email}")
+                else:
+                    logging.error("❌ Email: FAILED")
+                    logging.error("   Check SendGrid API key and configuration")
+                    
+        except Exception as email_error:
+            logging.error(f"❌ Email Error: {email_error}")
+            logging.error(f"   Type: {type(email_error).__name__}")
+            import traceback
+            logging.error(f"   Traceback: {traceback.format_exc()}")
+        
+        logging.info("")
+        logging.info("=" * 80)
+        logging.info(f"✅ WEBHOOK COMPLETE [{request_id}]")
+        logging.info(f"   Booking ID: {booking_id}")
+        logging.info(f"   Database: {'✅' if db_stored else '❌'}")
+        logging.info(f"   Email: {'✅' if email_sent else '❌'}")
+        logging.info("=" * 80)
+        
+        return jsonify({
+            'status': 'success',
+            'booking_id': booking_id,
+            'database_stored': db_stored,
+            'email_sent': email_sent,
+            'from': sender_email,
+            'subject': subject,
+            'request_id': request_id
+        }), 200
         
     except Exception as e:
-        logging.error(f"Error processing inbound email: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        logging.error("=" * 80)
+        logging.error(f"❌ WEBHOOK ERROR [{request_id}]")
+        logging.error("=" * 80)
+        logging.error(f"   Error Type: {type(e).__name__}")
+        logging.error(f"   Error Message: {str(e)}")
+        
+        import traceback
+        logging.error("")
+        logging.error("📋 Full Traceback:")
+        logging.error(traceback.format_exc())
+        logging.error("=" * 80)
+        
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'error_type': type(e).__name__,
+            'request_id': request_id
+        }), 500
 
 
 @app.route('/webhook/events', methods=['POST'])
