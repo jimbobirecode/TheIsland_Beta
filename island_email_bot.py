@@ -163,30 +163,26 @@ def get_email_header():
             }}
 
             .header {{
-                background: linear-gradient(135deg, {THE_ISLAND_COLORS['gradient_start']} 0%, {THE_ISLAND_COLORS['gradient_end']} 100%);
-                background-color: {THE_ISLAND_COLORS['navy_primary']};
+                background: #ffffff;
                 padding: 40px 30px;
                 text-align: center;
-                color: #ffffff;
+                color: {THE_ISLAND_COLORS['navy_primary']};
                 position: relative;
+                border-bottom: 2px solid {THE_ISLAND_COLORS['border_grey']};
             }}
 
-            .header::before {{
-                content: '';
-                position: absolute;
-                top: -50px;
-                right: -50px;
-                width: 200px;
-                height: 200px;
-                background: radial-gradient(circle, rgba(212, 175, 55, 0.2) 0%, transparent 70%);
-                border-radius: 50%;
+            .header-logo {{
+                max-width: 200px;
+                height: auto;
+                margin: 0 auto 20px auto;
+                display: block;
             }}
 
             .header h1 {{
                 margin: 0 0 10px 0;
                 font-size: 32px;
                 font-weight: 700;
-                color: #ffffff;
+                color: {THE_ISLAND_COLORS['navy_primary']};
                 letter-spacing: -0.5px;
                 position: relative;
                 z-index: 1;
@@ -194,23 +190,11 @@ def get_email_header():
 
             .header p {{
                 margin: 0;
-                color: {THE_ISLAND_COLORS['gold_accent']};
+                color: {THE_ISLAND_COLORS['text_medium']};
                 font-size: 16px;
                 font-weight: 600;
                 position: relative;
                 z-index: 1;
-            }}
-
-            .est-badge {{
-                display: inline-block;
-                margin-top: 8px;
-                padding: 4px 12px;
-                background: rgba(212, 175, 55, 0.2);
-                border: 1px solid {THE_ISLAND_COLORS['gold_accent']};
-                border-radius: 20px;
-                color: {THE_ISLAND_COLORS['gold_accent']};
-                font-size: 12px;
-                letter-spacing: 1px;
             }}
 
             .content {{
@@ -289,27 +273,16 @@ def get_email_header():
                 <td style="padding: 20px; background-color: {THE_ISLAND_COLORS['bg_light']};">
                     <table role="presentation" class="email-container" align="center" border="0" cellpadding="0" cellspacing="0" width="800" style="max-width: 800px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
                         <tr>
-                            <td class="header" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['gradient_start']} 0%, {THE_ISLAND_COLORS['gradient_end']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; padding: 40px 30px; text-align: center; color: #ffffff; position: relative;">
-                                <!--[if gte mso 9]>
-                                <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:800px;height:150px;">
-                                <v:fill type="gradient" color="{THE_ISLAND_COLORS['gradient_end']}" color2="{THE_ISLAND_COLORS['gradient_start']}" angle="135" />
-                                <v:textbox inset="40px,40px,40px,40px">
-                                <![endif]-->
-                                <div style="color: #ffffff;">
-                                    <h1 style="margin: 0 0 10px 0; font-size: 32px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">
+                            <td class="header" style="background: #ffffff; padding: 40px 30px; text-align: center; color: {THE_ISLAND_COLORS['navy_primary']}; position: relative; border-bottom: 2px solid {THE_ISLAND_COLORS['border_grey']};">
+                                <div>
+                                    <img src="https://raw.githubusercontent.com/jimbobirecode/TeeMail-Assests/main/images.png" alt="VLUB Logo" class="header-logo" style="max-width: 200px; height: auto; margin: 0 auto 20px auto; display: block;" />
+                                    <h1 style="margin: 0 0 10px 0; font-size: 32px; font-weight: 700; color: {THE_ISLAND_COLORS['navy_primary']}; letter-spacing: -0.5px;">
                                         ⛳ The Island Golf Club
                                     </h1>
-                                    <p style="margin: 0; color: {THE_ISLAND_COLORS['gold_accent']}; font-size: 16px; font-weight: 600;">
+                                    <p style="margin: 0; color: {THE_ISLAND_COLORS['text_medium']}; font-size: 16px; font-weight: 600;">
                                         Visitor Tee Time Booking
                                     </p>
-                                    <div class="est-badge" style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: rgba(212, 175, 55, 0.2); border: 1px solid {THE_ISLAND_COLORS['gold_accent']}; border-radius: 20px; color: {THE_ISLAND_COLORS['gold_accent']}; font-size: 12px; letter-spacing: 1px;">
-                                        CHAMPIONSHIP LINKS
-                                    </div>
                                 </div>
-                                <!--[if gte mso 9]>
-                                </v:textbox>
-                                </v:rect>
-                                <![endif]-->
                             </td>
                         </tr>
                         <tr>
@@ -1259,7 +1232,9 @@ def inbound_webhook():
             logging.info(f"      Alternate Date: {parsed_data.get('alternate_date')}")
 
         # Create booking with received data
-        booking_id = str(uuid.uuid4())[:8]
+        # Generate booking ID in format: ISL X X X X X
+        booking_suffix = str(uuid.uuid4()).replace('-', '').upper()[:5]
+        booking_id = f"ISL {booking_suffix[0]} {booking_suffix[1]} {booking_suffix[2]} {booking_suffix[3]} {booking_suffix[4]}"
 
         booking_data = {
             'id': booking_id,
