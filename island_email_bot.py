@@ -1062,47 +1062,56 @@ def send_email(to_email: str, subject: str, html_content: str):
 # --- DATABASE FUNCTIONS ---
 
 def store_booking_in_db(booking_data: Dict) -> bool:
-    """Store booking in PostgreSQL database"""
+    """Store booking in PostgreSQL database using new schema"""
     conn = get_db_connection()
     if not conn:
         logging.warning("No database connection available")
         return False
-    
+
     try:
         with conn.cursor() as cur:
+            # Convert old field names to new schema
+            booking_id = booking_data.get('booking_id') or booking_data.get('id')
+            guest_email = booking_data.get('guest_email') or booking_data.get('email')
+            players = booking_data.get('players') or booking_data.get('num_players', 4)
+            date = booking_data.get('date') or booking_data.get('preferred_date')
+            tee_time = booking_data.get('tee_time') or booking_data.get('preferred_time')
+            note = booking_data.get('note') or booking_data.get('special_requests')
+            total = booking_data.get('total') or (players * PER_PLAYER_FEE)
+
             cur.execute("""
                 INSERT INTO bookings (
-                    id, name, email, phone, num_players,
-                    preferred_date, preferred_time, alternate_date,
-                    special_requests, status, total_fee, created_at,
-                    course_id, raw_email_data
+                    booking_id, timestamp, guest_email, date, tee_time,
+                    players, total, status, note, club, club_name,
+                    message_id
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (id) DO UPDATE SET
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (booking_id) DO UPDATE SET
                     status = EXCLUDED.status,
+                    note = EXCLUDED.note,
                     updated_at = NOW()
             """, (
-                booking_data['id'],
-                booking_data.get('name'),
-                booking_data.get('email'),
-                booking_data.get('phone'),
-                booking_data.get('num_players'),
-                booking_data.get('preferred_date'),
-                booking_data.get('preferred_time'),
-                booking_data.get('alternate_date'),
-                booking_data.get('special_requests'),
-                booking_data.get('status', 'provisional'),
-                booking_data.get('num_players', 0) * PER_PLAYER_FEE,
+                booking_id,
                 datetime.utcnow(),
-                DEFAULT_COURSE_ID,
-                Json(booking_data)
+                guest_email,
+                date,
+                tee_time,
+                players,
+                total,
+                booking_data.get('status', 'provisional'),
+                note,
+                'theisland',
+                'The Island Golf Club',
+                booking_data.get('message_id')
             ))
         conn.commit()
-        logging.info(f"Stored booking {booking_data['id']} in database")
+        logging.info(f"Stored booking {booking_id} in database")
         return True
     except Exception as e:
         conn.rollback()
         logging.error(f"Failed to store booking in database: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return False
     finally:
         release_db_connection(conn)
@@ -1113,21 +1122,29 @@ def update_booking_status(booking_id: str, status: str, notes: str = None) -> bo
     conn = get_db_connection()
     if not conn:
         return False
-    
+
     try:
         with conn.cursor() as cur:
             if notes:
                 cur.execute("""
                     UPDATE bookings
-                    SET status = %s, internal_notes = %s, updated_at = NOW()
-                    WHERE id = %s
+                    SET status = %s, note = %s, updated_at = NOW()
+                    WHERE booking_id = %s
                 """, (status, notes, booking_id))
             else:
                 cur.execute("""
                     UPDATE bookings
                     SET status = %s, updated_at = NOW()
-                    WHERE id = %s
+                    WHERE booking_id = %s
                 """, (status, booking_id))
+
+            # Set customer_confirmed_at if status is confirmed
+            if status == 'confirmed':
+                cur.execute("""
+                    UPDATE bookings
+                    SET customer_confirmed_at = NOW()
+                    WHERE booking_id = %s AND customer_confirmed_at IS NULL
+                """, (booking_id,))
         conn.commit()
         logging.info(f"Updated booking {booking_id} to status: {status}")
         return True
@@ -1238,30 +1255,27 @@ def inbound_webhook():
         booking_id = f"ISL-{date_str}-{hash_digest}"
 
         booking_data = {
-            'id': booking_id,
-            'name': sender_name,
-            'email': sender_email,
-            'phone': parsed_data.get('phone') or 'N/A',
-            'num_players': parsed_data.get('num_players', 4),
-            'preferred_date': parsed_data.get('preferred_date') or 'TBD',
-            'preferred_time': parsed_data.get('preferred_time') or 'TBD',
-            'alternate_date': parsed_data.get('alternate_date'),
-            'special_requests': text_body[:500] if text_body else subject,
+            'booking_id': booking_id,
+            'guest_email': sender_email,
+            'players': parsed_data.get('num_players', 4),
+            'date': parsed_data.get('preferred_date') or 'TBD',
+            'tee_time': parsed_data.get('preferred_time') or 'TBD',
+            'note': text_body[:500] if text_body else subject,
             'status': 'provisional',
-            'course_id': DEFAULT_COURSE_ID
+            'club': 'theisland',
+            'club_name': 'The Island Golf Club',
+            'total': parsed_data.get('num_players', 4) * PER_PLAYER_FEE
         }
 
         logging.info("")
         logging.info(f"📋 Creating Booking:")
-        logging.info(f"   ID: {booking_id}")
+        logging.info(f"   Booking ID: {booking_id}")
         logging.info(f"   Name: {sender_name}")
         logging.info(f"   Email: {sender_email}")
-        logging.info(f"   Phone: {booking_data['phone']}")
-        logging.info(f"   Players: {booking_data['num_players']}")
-        logging.info(f"   Date: {booking_data['preferred_date']}")
-        logging.info(f"   Time: {booking_data['preferred_time']}")
-        if booking_data.get('alternate_date'):
-            logging.info(f"   Alternate Date: {booking_data['alternate_date']}")
+        logging.info(f"   Players: {booking_data['players']}")
+        logging.info(f"   Date: {booking_data['date']}")
+        logging.info(f"   Tee Time: {booking_data['tee_time']}")
+        logging.info(f"   Total: ${booking_data['total']:.2f}")
         
         # Store in database
         logging.info("")
@@ -1414,18 +1428,18 @@ def confirm_booking(booking_id):
         
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM bookings WHERE id = %s", (booking_id,))
+                cur.execute("SELECT * FROM bookings WHERE booking_id = %s", (booking_id,))
                 booking = cur.fetchone()
-            
+
             if not booking:
                 return jsonify({'status': 'error', 'message': 'Booking not found'}), 404
-            
+
             # Update status
             update_booking_status(booking_id, 'confirmed')
-            
+
             # Send confirmation email
             html_email = format_confirmation_email(dict(booking))
-            send_email(booking['email'], "✅ Your Island Golf Club Booking is Confirmed!", html_email)
+            send_email(booking['guest_email'], "✅ Your Island Golf Club Booking is Confirmed!", html_email)
             
             return jsonify({'status': 'success', 'booking_id': booking_id}), 200
             
@@ -1448,9 +1462,9 @@ def get_bookings():
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
                 SELECT * FROM bookings
-                WHERE course_id = %s
+                WHERE club = %s
                 ORDER BY created_at DESC
-            """, (DEFAULT_COURSE_ID,))
+            """, ('theisland',))
             bookings = cur.fetchall()
         
         return jsonify({'status': 'success', 'bookings': bookings}), 200
