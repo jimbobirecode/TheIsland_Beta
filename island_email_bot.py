@@ -376,6 +376,54 @@ def get_email_footer():
     </html>
     """
 
+def build_booking_link(date: str, time: str, players: int, guest_email: str, booking_id: str = None) -> str:
+    """Generate mailto link for Reserve Now button"""
+
+    tracking_email = f"{TRACKING_EMAIL_PREFIX}@bookings.teemail.io"
+    club_email = CLUB_BOOKING_EMAIL
+
+    # Format booking details
+    subject = quote(f"CONFIRM BOOKING - {date} at {time}")
+
+    body_lines = [
+        f"CONFIRM BOOKING",
+        f"",
+        f"Booking Details:",
+        f"- Date: {date}",
+        f"- Time: {time}",
+        f"- Players: {players}",
+        f"- Green Fee: €{PER_PLAYER_FEE:.0f} per player",
+        f"- Total: €{players * PER_PLAYER_FEE:.0f}",
+        f"",
+        f"Guest Email: {guest_email}",
+    ]
+
+    if booking_id:
+        body_lines.insert(3, f"- Booking ID: {booking_id}")
+
+    body = quote("\n".join(body_lines))
+
+    # Create mailto link with both tracking and club email
+    mailto_link = f"mailto:{club_email}?cc={tracking_email}&subject={subject}&body={body}"
+
+    return mailto_link
+
+
+def create_book_button(booking_link: str, button_text: str = "Reserve Now") -> str:
+    """Create HTML for Reserve Now button"""
+    return f"""
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+            <tr>
+                <td style="border-radius: 6px; background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);">
+                    <a href="{booking_link}" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff !important; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+                        {button_text}
+                    </a>
+                </td>
+            </tr>
+        </table>
+    """
+
+
 def format_availability_email(results: list, player_count: int, guest_email: str, booking_id: str = None,
                              used_alternatives: bool = False, original_dates: list = None) -> str:
     """Generate The Island Golf Club branded HTML email with available tee times"""
@@ -1029,249 +1077,15 @@ def send_email(to_email: str, subject: str, html_content: str):
             subject=subject,
             html_content=Content("text/html", html_content)
         )
-
+        
         sg = SendGridAPIClient(SENDGRID_API_KEY)
         response = sg.send(message)
-
+        
         logging.info(f"Email sent to {to_email}: {response.status_code}")
         return True
     except Exception as e:
         logging.error(f"Failed to send email to {to_email}: {e}")
         return False
-
-
-# --- CORE API INTEGRATION FUNCTIONS ---
-
-def check_availability_via_api(course_id: str, dates: list, players: int, time_preference: str = None) -> dict:
-    """Call Core API to check availability for tee times"""
-    try:
-        url = f"{CORE_API_URL}/check_availability"
-        payload = {
-            "course_id": course_id,
-            "dates": dates,
-            "players": players
-        }
-
-        # Add time preference if provided
-        if time_preference:
-            time_pref = {}
-            if 'morning' in time_preference.lower():
-                time_pref['morning'] = True
-            if 'afternoon' in time_preference.lower():
-                time_pref['afternoon'] = True
-            if 'evening' in time_preference.lower():
-                time_pref['evening'] = True
-            if time_pref:
-                payload['time_preference'] = time_pref
-
-        logging.info(f"🔗 Calling Core API: {url}")
-        logging.info(f"   Dates: {dates}")
-        logging.info(f"   Players: {players}")
-
-        response = requests.post(url, json=payload, timeout=120)
-        response.raise_for_status()
-
-        data = response.json()
-
-        logging.info(f"✅ Core API responded - {len(data.get('results', []))} results")
-
-        return data
-
-    except requests.exceptions.Timeout:
-        logging.error("❌ Core API timeout")
-        return {"success": False, "error": "Core API timeout", "results": []}
-    except requests.exceptions.RequestException as e:
-        logging.error(f"❌ Core API error: {e}")
-        return {"success": False, "error": str(e), "results": []}
-    except Exception as e:
-        logging.error(f"❌ Unexpected error calling Core API: {e}")
-        return {"success": False, "error": str(e), "results": []}
-
-
-def generate_alternative_dates(requested_dates: list, max_alternatives: int = 7) -> list:
-    """Generate alternative dates within +/- 7 days of requested dates"""
-    if not requested_dates:
-        return []
-
-    alternatives = []
-
-    for date_str in requested_dates:
-        try:
-            # Parse the date
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-
-            # Generate dates within +/- 7 days
-            for days_offset in range(-7, 8):
-                if days_offset == 0:
-                    continue  # Skip the original date
-
-                alt_date = date_obj + timedelta(days=days_offset)
-
-                # Only include future dates
-                if alt_date.date() >= datetime.now().date():
-                    alt_date_str = alt_date.strftime('%Y-%m-%d')
-                    if alt_date_str not in requested_dates and alt_date_str not in alternatives:
-                        alternatives.append(alt_date_str)
-
-        except ValueError:
-            logging.warning(f"Could not parse date: {date_str}")
-            continue
-
-    # Sort and limit
-    alternatives.sort()
-    return alternatives[:max_alternatives]
-
-
-def check_availability_with_alternatives(course_id: str, dates: list, players: int, time_preference: str = None) -> dict:
-    """
-    Check availability and automatically try alternative dates if none found.
-    Returns combined results with flags indicating if alternatives were used.
-    """
-    logging.info("="*80)
-    logging.info("🔍 CHECKING AVAILABILITY WITH AUTO-ALTERNATIVES")
-    logging.info("="*80)
-    logging.info(f"📅 Original dates requested: {dates}")
-    logging.info(f"👥 Players: {players}")
-
-    # STEP 1: Try the originally requested dates
-    logging.info("🔍 STEP 1: Checking originally requested dates...")
-    original_response = check_availability_via_api(course_id, dates, players, time_preference)
-
-    # Check if we got results AND they match the requested dates
-    if original_response.get("success") and original_response.get("results"):
-        results = original_response.get("results", [])
-        result_count = len(results)
-
-        # Check if results are actually for the requested dates
-        result_dates = set([r.get('date') for r in results])
-        requested_dates = set(dates)
-
-        # If results match requested dates, we're done!
-        if result_dates.intersection(requested_dates):
-            matching_results = [r for r in results if r.get('date') in requested_dates]
-            logging.info(f"✅ SUCCESS! Found {len(matching_results)} tee times on requested dates")
-            logging.info("="*80)
-
-            original_response['results'] = matching_results
-            original_response['used_alternatives'] = False
-            original_response['original_dates'] = dates
-            original_response['checked_alternatives'] = False
-            return original_response
-        else:
-            logging.warning(f"⚠️  API returned {result_count} results but for different dates")
-            logging.info("   Treating as no availability on requested dates")
-
-    # STEP 2: No availability on requested dates - try alternatives
-    logging.info("⚠️  No availability found on requested dates")
-    logging.info("="*80)
-    logging.info("🔄 STEP 2: Generating and checking alternative dates...")
-    logging.info("="*80)
-
-    alternative_dates = generate_alternative_dates(dates, max_alternatives=7)
-
-    if not alternative_dates:
-        logging.warning("❌ Could not generate alternative dates")
-        return {
-            "success": False,
-            "results": [],
-            "used_alternatives": False,
-            "original_dates": dates,
-            "checked_alternatives": False
-        }
-
-    logging.info(f"📅 Checking {len(alternative_dates)} alternative dates:")
-    for i, date in enumerate(alternative_dates, 1):
-        logging.info(f"   {i}. {date}")
-
-    # Try alternative dates
-    alternative_response = check_availability_via_api(course_id, alternative_dates, players, time_preference)
-
-    if alternative_response.get("success") and alternative_response.get("results"):
-        result_count = len(alternative_response['results'])
-        logging.info("="*80)
-        logging.info(f"🎉 GREAT NEWS! Found {result_count} tee times on alternative dates!")
-        logging.info("="*80)
-
-        alternative_response['used_alternatives'] = True
-        alternative_response['original_dates'] = dates
-        alternative_response['searched_dates'] = alternative_dates
-        alternative_response['checked_alternatives'] = True
-
-        # Mark all results as alternative dates for UI display
-        for result in alternative_response.get('results', []):
-            result['is_alternative_date'] = True
-
-        # Log which dates had availability
-        available_dates = list(set([r['date'] for r in alternative_response['results']]))
-        logging.info(f"📅 Available alternative dates found:")
-        for date in sorted(available_dates):
-            count = len([r for r in alternative_response['results'] if r['date'] == date])
-            logging.info(f"   • {date}: {count} tee times")
-
-        return alternative_response
-
-    # STEP 3: Still no availability found
-    logging.info("="*80)
-    logging.warning("❌ No availability found on requested dates OR alternatives")
-    logging.info("="*80)
-
-    return {
-        "success": False,
-        "results": [],
-        "error": "No availability found",
-        "used_alternatives": False,
-        "original_dates": dates,
-        "searched_dates": alternative_dates,
-        "checked_alternatives": True
-    }
-
-
-def build_booking_link(date: str, time: str, players: int, guest_email: str, booking_id: str = None) -> str:
-    """Generate mailto link for Reserve Now button"""
-
-    tracking_email = f"{TRACKING_EMAIL_PREFIX}@bookings.teemail.io"
-    club_email = CLUB_BOOKING_EMAIL
-
-    # Format booking details
-    subject = quote(f"CONFIRM BOOKING - {date} at {time}")
-
-    body_lines = [
-        f"CONFIRM BOOKING",
-        f"",
-        f"Booking Details:",
-        f"- Date: {date}",
-        f"- Time: {time}",
-        f"- Players: {players}",
-        f"- Green Fee: €{PER_PLAYER_FEE:.0f} per player",
-        f"- Total: €{players * PER_PLAYER_FEE:.0f}",
-        f"",
-        f"Guest Email: {guest_email}",
-    ]
-
-    if booking_id:
-        body_lines.insert(3, f"- Booking ID: {booking_id}")
-
-    body = quote("\n".join(body_lines))
-
-    # Create mailto link with both tracking and club email
-    mailto_link = f"mailto:{club_email}?cc={tracking_email}&subject={subject}&body={body}"
-
-    return mailto_link
-
-
-def create_book_button(booking_link: str, button_text: str = "Reserve Now") -> str:
-    """Create HTML for Reserve Now button"""
-    return f"""
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
-            <tr>
-                <td style="border-radius: 6px; background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);">
-                    <a href="{booking_link}" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff !important; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
-                        {button_text}
-                    </a>
-                </td>
-            </tr>
-        </table>
-    """
 
 
 # --- DATABASE FUNCTIONS ---
@@ -1473,86 +1287,75 @@ def inbound_webhook():
         if booking_data.get('alternate_date'):
             logging.info(f"   Alternate Date: {booking_data['alternate_date']}")
         
-        # Check if we have a valid date to query availability
-        dates_to_check = []
-        if parsed_data.get('preferred_date') and parsed_data['preferred_date'] != 'TBD':
-            dates_to_check.append(parsed_data['preferred_date'])
-        if parsed_data.get('alternate_date'):
-            dates_to_check.append(parsed_data['alternate_date'])
-
-        email_sent = False
-        html_email = ""
-        subject_line = ""
-
-        if dates_to_check:
-            # Check availability via Core API
-            logging.info("")
-            logging.info("🔍 Checking tee time availability...")
-            api_response = check_availability_with_alternatives(
-                DEFAULT_COURSE_ID,
-                dates_to_check,
-                booking_data['num_players'],
-                parsed_data.get('preferred_time')
-            )
-
-            # Format and send email based on API response
-            logging.info("")
-            logging.info("📧 Preparing email response...")
-
-            if api_response.get('results'):
-                # We have available tee times!
-                results = api_response['results']
-                used_alternatives = api_response.get('used_alternatives', False)
-                original_dates = api_response.get('original_dates', dates_to_check)
-
-                logging.info(f"✅ Found {len(results)} available tee times")
-
-                subject_line = f"Available Tee Times at The Island Golf Club"
-                html_email = format_availability_email(
-                    results=results,
-                    player_count=booking_data['num_players'],
-                    guest_email=sender_email,
-                    booking_id=booking_id,
-                    used_alternatives=used_alternatives,
-                    original_dates=original_dates
-                )
-
-            else:
-                # No availability found
-                checked_alternatives = api_response.get('checked_alternatives', False)
-                original_dates = api_response.get('original_dates', dates_to_check)
-
-                logging.warning("❌ No availability found")
-
-                subject_line = "Tee Time Request - The Island Golf Club"
-                html_email = format_no_availability_email(
-                    player_count=booking_data['num_players'],
-                    original_dates=original_dates,
-                    checked_alternatives=checked_alternatives
-                )
-
-        else:
-            # No valid date provided - send a polite error email
-            logging.warning("⚠️  No valid date found in email")
-            subject_line = "Tee Time Enquiry - The Island Golf Club"
-            html_email = format_no_availability_email(
-                player_count=booking_data['num_players'],
-                original_dates=None,
-                checked_alternatives=False
-            )
-
-        # Send the email
+        # Store in database
         logging.info("")
-        logging.info("📧 Sending email response...")
+        logging.info("💾 Storing in database...")
+        db_stored = store_booking_in_db(booking_data)
+        
+        if db_stored:
+            logging.info("✅ Database: SUCCESS")
+        else:
+            logging.error("❌ Database: FAILED")
+            logging.error("   Check DATABASE_URL environment variable")
+            logging.error("   Check database connection and schema")
+        
+        # Send provisional confirmation email with requested times
+        logging.info("")
+        logging.info("📧 Preparing confirmation email with requested times...")
+        email_sent = False
+
+        # Build results from parsed booking data (not from API - this is self-contained)
+        results = []
+        dates_to_show = []
+
+        if booking_data.get('preferred_date') and booking_data['preferred_date'] != 'TBD':
+            dates_to_show.append(booking_data['preferred_date'])
+
+        if booking_data.get('alternate_date'):
+            dates_to_show.append(booking_data['alternate_date'])
+
+        # Create time slots from parsed time or default common times
+        times_to_show = []
+        if booking_data.get('preferred_time') and booking_data['preferred_time'] != 'TBD':
+            times_to_show.append(booking_data['preferred_time'])
+        else:
+            # Default to common tee times if no specific time requested
+            times_to_show = ['08:00', '10:00', '12:00', '14:00', '16:00']
+
+        # Build results for email template
+        for date in dates_to_show:
+            for time in times_to_show:
+                results.append({
+                    'date': date,
+                    'time': time
+                })
 
         try:
             if not SENDGRID_API_KEY:
                 logging.error("❌ SENDGRID_API_KEY not set!")
-                logging.error("   Cannot send email")
+                logging.error("   Cannot send confirmation email")
             else:
+                if results:
+                    # We have dates to show - use the fancy availability email
+                    logging.info(f"   Showing {len(results)} time slots for requested dates")
+                    html_email = format_availability_email(
+                        results=results,
+                        player_count=booking_data['num_players'],
+                        guest_email=sender_email,
+                        booking_id=booking_id,
+                        used_alternatives=False,
+                        original_dates=None
+                    )
+                    subject = "Available Tee Times at The Island Golf Club"
+                else:
+                    # No valid dates - send provisional email
+                    logging.info("   No valid dates found - sending provisional confirmation")
+                    html_email = format_provisional_email(booking_data)
+                    subject = "Your Island Golf Club Booking Request"
+
                 email_sent = send_email(
                     sender_email,
-                    subject_line,
+                    subject,
                     html_email
                 )
 
@@ -1562,24 +1365,12 @@ def inbound_webhook():
                 else:
                     logging.error("❌ Email: FAILED")
                     logging.error("   Check SendGrid API key and configuration")
-
+                    
         except Exception as email_error:
             logging.error(f"❌ Email Error: {email_error}")
             logging.error(f"   Type: {type(email_error).__name__}")
             import traceback
             logging.error(f"   Traceback: {traceback.format_exc()}")
-
-        # Store in database
-        logging.info("")
-        logging.info("💾 Storing in database...")
-        db_stored = store_booking_in_db(booking_data)
-
-        if db_stored:
-            logging.info("✅ Database: SUCCESS")
-        else:
-            logging.error("❌ Database: FAILED")
-            logging.error("   Check DATABASE_URL environment variable")
-            logging.error("   Check database connection and schema")
         
         logging.info("")
         logging.info("=" * 80)
