@@ -22,6 +22,8 @@ import uuid
 import hashlib
 import re
 from urllib.parse import quote
+from dateutil import parser as date_parser
+from dateutil.relativedelta import relativedelta
 
 app = Flask(__name__)
 
@@ -387,6 +389,172 @@ def format_provisional_email(booking_data: Dict) -> str:
     return html_content
 
 
+# --- EMAIL PARSING FUNCTION ---
+
+def parse_booking_from_email(text: str, subject: str = "") -> Dict:
+    """
+    Parse booking details from email content using intelligent pattern matching.
+    Returns a dictionary with extracted booking information.
+    """
+    full_text = f"{subject}\n{text}".lower()
+    result = {
+        'num_players': None,
+        'preferred_date': None,
+        'preferred_time': None,
+        'phone': None,
+        'alternate_date': None
+    }
+
+    # --- EXTRACT NUMBER OF PLAYERS ---
+    player_patterns = [
+        r'(\d+)\s*(?:players?|people|persons?|golfers?|guests?)',
+        r'(?:party|group)\s*(?:of|size)?\s*(\d+)',
+        r'(?:foursome|4some)',  # Special case for 4
+        r'(?:twosome|2some)',   # Special case for 2
+        r'(?:threesome|3some)', # Special case for 3
+        r'for\s*(\d+)',
+        r'(\d+)\s*(?:ball|person)'
+    ]
+
+    for pattern in player_patterns:
+        match = re.search(pattern, full_text)
+        if match:
+            if 'foursome' in pattern or '4some' in pattern:
+                result['num_players'] = 4
+            elif 'twosome' in pattern or '2some' in pattern:
+                result['num_players'] = 2
+            elif 'threesome' in pattern or '3some' in pattern:
+                result['num_players'] = 3
+            else:
+                try:
+                    num = int(match.group(1))
+                    if 1 <= num <= 4:  # Valid golf group size
+                        result['num_players'] = num
+                except (ValueError, IndexError):
+                    pass
+            if result['num_players']:
+                break
+
+    # Default to 4 if not found
+    if not result['num_players']:
+        result['num_players'] = 4
+
+    # --- EXTRACT PHONE NUMBER ---
+    phone_patterns = [
+        r'(?:phone|tel|mobile|cell|contact)\s*:?\s*([+]?[\d\s\-\(\)]{9,})',
+        r'([+]?\d{1,4}[\s\-]?\(?\d{1,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{3,4})',
+        r'(\d{3}[\s\-]\d{3,4}[\s\-]\d{4})',
+    ]
+
+    for pattern in phone_patterns:
+        match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
+        if match:
+            phone = match.group(1).strip()
+            # Clean up phone number - keep only digits, +, (), -, and spaces
+            phone = re.sub(r'[^\d+\(\)\-\s]', '', phone).strip()
+            # Count digits only
+            digit_count = len(re.sub(r'[^\d]', '', phone))
+            if digit_count >= 7:  # At least 7 digits for a valid phone
+                result['phone'] = phone
+                break
+
+    # --- EXTRACT DATES ---
+    # Common date patterns
+    date_patterns = [
+        r'(?:on|for|date[:\s]*)\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
+        r'(?:on|for|date[:\s]*)\s*(\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{2,4})',
+        r'(?:on|for|date[:\s]*)\s*((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+\d{2,4})?)',
+        r'(?:on|for|date[:\s]*)\s*(next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))',
+        r'(?:on|for|date[:\s]*)\s*(tomorrow)',
+        r'(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
+    ]
+
+    dates_found = []
+    for pattern in date_patterns:
+        for match in re.finditer(pattern, full_text, re.IGNORECASE):
+            date_str = match.group(1).strip()
+            try:
+                # Try to parse the date
+                parsed_date = None
+
+                if 'tomorrow' in date_str:
+                    parsed_date = datetime.now() + timedelta(days=1)
+                elif 'next' in date_str:
+                    # Handle "next Friday" etc
+                    days = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+                           'friday': 4, 'saturday': 5, 'sunday': 6}
+                    for day, offset in days.items():
+                        if day in date_str:
+                            today = datetime.now()
+                            current_day = today.weekday()
+                            days_ahead = (offset - current_day + 7) % 7
+                            if days_ahead == 0:
+                                days_ahead = 7
+                            parsed_date = today + timedelta(days=days_ahead)
+                            break
+                else:
+                    # Use dateutil parser for flexible date parsing
+                    parsed_date = date_parser.parse(date_str, fuzzy=True, dayfirst=True)
+
+                if parsed_date:
+                    # Only accept future dates
+                    if parsed_date.date() >= datetime.now().date():
+                        dates_found.append(parsed_date.strftime('%Y-%m-%d'))
+            except (ValueError, TypeError):
+                continue
+
+    # Assign first two unique dates found
+    unique_dates = list(dict.fromkeys(dates_found))  # Remove duplicates while preserving order
+    if unique_dates:
+        result['preferred_date'] = unique_dates[0]
+        if len(unique_dates) > 1:
+            result['alternate_date'] = unique_dates[1]
+
+    # --- EXTRACT TIME ---
+    time_patterns = [
+        r'(?:time|tee\s*time)[:\s]*(\d{1,2}:\d{2}\s*(?:am|pm)?)',
+        r'(?:time|tee\s*time)[:\s]*(\d{1,2}\s*(?:am|pm))',
+        r'(?:at|around)\s+(\d{1,2}:\d{2}\s*(?:am|pm)?)',
+        r'(?:at|around)\s+(\d{1,2}\s*(?:am|pm))',
+        r'(\d{1,2}:\d{2}\s*(?:am|pm)?)',
+        r'(morning|afternoon|evening)',
+    ]
+
+    for pattern in time_patterns:
+        match = re.search(pattern, full_text, re.IGNORECASE)
+        if match:
+            time_str = match.group(1).strip()
+
+            # Convert general times to specific ranges
+            if time_str in ['morning', 'morning time']:
+                result['preferred_time'] = '9:00 AM'
+            elif time_str in ['afternoon', 'afternoon time']:
+                result['preferred_time'] = '2:00 PM'
+            elif time_str in ['evening', 'evening time']:
+                result['preferred_time'] = '5:00 PM'
+            else:
+                # Normalize time format
+                try:
+                    # Add AM/PM if missing and hour is ambiguous
+                    if not re.search(r'am|pm', time_str, re.IGNORECASE):
+                        hour_match = re.match(r'(\d{1,2})', time_str)
+                        if hour_match:
+                            hour = int(hour_match.group(1))
+                            if hour >= 7 and hour <= 11:
+                                time_str += ' AM'
+                            elif hour >= 12:
+                                time_str += ' PM'
+                            elif hour >= 1 and hour <= 6:
+                                time_str += ' PM'
+
+                    result['preferred_time'] = time_str.upper()
+                except:
+                    result['preferred_time'] = time_str
+            break
+
+    return result
+
+
 # --- EMAIL SENDING FUNCTION ---
 
 def send_email(to_email: str, subject: str, html_content: str):
@@ -566,31 +734,47 @@ def inbound_webhook():
             sender_name = sender_email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
             logging.info(f"   Generated name from email: {sender_name}")
         
+        # Parse booking details from email content
+        logging.info("")
+        logging.info("🔍 Parsing email content for booking details...")
+        parsed_data = parse_booking_from_email(text_body, subject)
+
+        logging.info(f"   📊 Parsed Results:")
+        logging.info(f"      Players: {parsed_data.get('num_players', 'Not found')}")
+        logging.info(f"      Date: {parsed_data.get('preferred_date', 'Not found')}")
+        logging.info(f"      Time: {parsed_data.get('preferred_time', 'Not found')}")
+        logging.info(f"      Phone: {parsed_data.get('phone', 'Not found')}")
+        if parsed_data.get('alternate_date'):
+            logging.info(f"      Alternate Date: {parsed_data.get('alternate_date')}")
+
         # Create booking with received data
         booking_id = str(uuid.uuid4())[:8]
-        
+
         booking_data = {
             'id': booking_id,
             'name': sender_name,
             'email': sender_email,
-            'phone': 'N/A',
-            'num_players': 4,  # Default - TODO: parse from email body
-            'preferred_date': 'TBD',  # TODO: parse from email body
-            'preferred_time': 'TBD',  # TODO: parse from email body
-            'alternate_date': None,
+            'phone': parsed_data.get('phone') or 'N/A',
+            'num_players': parsed_data.get('num_players', 4),
+            'preferred_date': parsed_data.get('preferred_date') or 'TBD',
+            'preferred_time': parsed_data.get('preferred_time') or 'TBD',
+            'alternate_date': parsed_data.get('alternate_date'),
             'special_requests': text_body[:500] if text_body else subject,
             'status': 'provisional',
             'course_id': DEFAULT_COURSE_ID
         }
-        
+
         logging.info("")
         logging.info(f"📋 Creating Booking:")
         logging.info(f"   ID: {booking_id}")
         logging.info(f"   Name: {sender_name}")
         logging.info(f"   Email: {sender_email}")
+        logging.info(f"   Phone: {booking_data['phone']}")
         logging.info(f"   Players: {booking_data['num_players']}")
         logging.info(f"   Date: {booking_data['preferred_date']}")
         logging.info(f"   Time: {booking_data['preferred_time']}")
+        if booking_data.get('alternate_date'):
+            logging.info(f"   Alternate Date: {booking_data['alternate_date']}")
         
         # Store in database
         logging.info("")
