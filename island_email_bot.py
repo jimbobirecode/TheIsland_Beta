@@ -1316,33 +1316,90 @@ def inbound_webhook():
             logging.error("   Check DATABASE_URL environment variable")
             logging.error("   Check database connection and schema")
         
-        # Send provisional acknowledgment email for booking request
+        # Check availability and send email with available times
         logging.info("")
-        logging.info("📧 Preparing provisional acknowledgment email...")
+        logging.info("📧 Checking availability and preparing time offers...")
         email_sent = False
+
+        # Build list of dates to check
+        dates_to_check = []
+        if booking_data.get('date') and booking_data['date'] != 'TBD':
+            dates_to_check.append(booking_data['date'])
+        if parsed_data.get('alternate_date'):
+            dates_to_check.append(parsed_data['alternate_date'])
 
         try:
             if not SENDGRID_API_KEY:
                 logging.error("❌ SENDGRID_API_KEY not set!")
-                logging.error("   Cannot send acknowledgment email")
-            else:
-                # Always send provisional email for initial booking requests
-                logging.info("   Sending provisional booking acknowledgment")
+                logging.error("   Cannot send email")
+            elif not dates_to_check:
+                # No valid dates - send provisional email
+                logging.info("   No valid dates - sending provisional acknowledgment")
                 html_email = format_provisional_email(booking_data)
                 subject = "Your Island Golf Club Booking Request"
+                email_sent = send_email(sender_email, subject, html_email)
+            else:
+                # Check availability for requested dates
+                logging.info(f"   Checking availability for {len(dates_to_check)} date(s)")
 
-                email_sent = send_email(
-                    sender_email,
-                    subject,
-                    html_email
-                )
+                # Call Core API to check availability
+                try:
+                    response = requests.post(
+                        f"{CORE_API_URL}/api/availability/check",
+                        json={
+                            'course_id': DEFAULT_COURSE_ID,
+                            'dates': dates_to_check,
+                            'players': booking_data['players']
+                        },
+                        timeout=10
+                    )
+
+                    if response.status_code == 200:
+                        api_data = response.json()
+                        results = api_data.get('results', [])
+
+                        if results:
+                            # We have available times - send availability email
+                            logging.info(f"   Found {len(results)} available time slots")
+                            html_email = format_availability_email(
+                                results=results,
+                                player_count=booking_data['players'],
+                                guest_email=sender_email,
+                                booking_id=booking_id,
+                                used_alternatives=False,
+                                original_dates=None
+                            )
+                            subject = "Available Tee Times at The Island Golf Club"
+                            email_sent = send_email(sender_email, subject, html_email)
+                        else:
+                            # No availability - send no availability email
+                            logging.info("   No availability found")
+                            html_email = format_no_availability_email(
+                                player_count=booking_data['players'],
+                                original_dates=dates_to_check,
+                                checked_alternatives=False
+                            )
+                            subject = "Tee Time Availability - The Island Golf Club"
+                            email_sent = send_email(sender_email, subject, html_email)
+                    else:
+                        # API error - send provisional email
+                        logging.warning(f"   API returned {response.status_code} - sending provisional")
+                        html_email = format_provisional_email(booking_data)
+                        subject = "Your Island Golf Club Booking Request"
+                        email_sent = send_email(sender_email, subject, html_email)
+
+                except requests.RequestException as api_error:
+                    # API unavailable - send provisional email
+                    logging.warning(f"   API unavailable: {api_error} - sending provisional")
+                    html_email = format_provisional_email(booking_data)
+                    subject = "Your Island Golf Club Booking Request"
+                    email_sent = send_email(sender_email, subject, html_email)
 
                 if email_sent:
                     logging.info("✅ Email: SUCCESS")
                     logging.info(f"   Sent to: {sender_email}")
                 else:
                     logging.error("❌ Email: FAILED")
-                    logging.error("   Check SendGrid API key and configuration")
 
         except Exception as email_error:
             logging.error(f"❌ Email Error: {email_error}")
