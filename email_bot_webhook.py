@@ -433,9 +433,7 @@ def get_email_header(course_name: str) -> str:
                                 <v:textbox inset="40px,40px,40px,40px">
                                 <![endif]-->
                                 <div style="color: #ffffff;">
-                                    <h1 style="margin: 0 0 10px 0; font-size: 32px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">
-                                        <span class="emoji"></span>{course_name}
-                                    </h1>
+                                    <hr style="border: 0; height: 3px; background-color: #1923c2; margin: 20px auto; width: 100%; max-width: 600px;" />
                                     <p style="margin: 0; color: #D4AF37; font-size: 16px; font-weight: 600;">
                                         Available Tee Times for Your Round
                                     </p>
@@ -763,15 +761,15 @@ def release_db_connection(conn):
 
 
 def generate_booking_id(guest_email: str, timestamp: str = None) -> str:
-    """Generate a unique booking ID in format: BOOK-YYYYMMDD-XXXX"""
+    """Generate a unique booking ID in format: ISL-YYYYMMDD-XXXX"""
     if timestamp is None:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     date_str = datetime.now().strftime("%Y%m%d")
     hash_input = f"{guest_email}{timestamp}".encode('utf-8')
-    hash_digest = hashlib.md5(hash_input).hexdigest()[:8].upper()
+    hash_digest = hashlib.md5(hash_input).hexdigest()[:4].upper()
 
-    return f"BOOK-{date_str}-{hash_digest}"
+    return f"ISL-{date_str}-{hash_digest}"
 
 
 def save_booking_to_db(booking_data: dict):

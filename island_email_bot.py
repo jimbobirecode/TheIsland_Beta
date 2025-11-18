@@ -276,9 +276,7 @@ def get_email_header():
                             <td class="header" style="background: #ffffff; padding: 40px 30px; text-align: center; color: {THE_ISLAND_COLORS['navy_primary']}; position: relative; border-bottom: 2px solid {THE_ISLAND_COLORS['border_grey']};">
                                 <div>
                                     <img src="https://raw.githubusercontent.com/jimbobirecode/TeeMail-Assests/main/images.png" alt="VLUB Logo" class="header-logo" style="max-width: 200px; height: auto; margin: 0 auto 20px auto; display: block;" />
-                                    <h1 style="margin: 0 0 10px 0; font-size: 32px; font-weight: 700; color: {THE_ISLAND_COLORS['navy_primary']}; letter-spacing: -0.5px;">
-                                        ⛳ The Island Golf Club
-                                    </h1>
+                                    <hr style="border: 0; height: 3px; background-color: {THE_ISLAND_COLORS['royal_blue']}; margin: 20px auto; width: 100%; max-width: 600px;" />
                                     <p style="margin: 0; color: {THE_ISLAND_COLORS['text_medium']}; font-size: 16px; font-weight: 600;">
                                         Visitor Tee Time Booking
                                     </p>
@@ -1232,9 +1230,12 @@ def inbound_webhook():
             logging.info(f"      Alternate Date: {parsed_data.get('alternate_date')}")
 
         # Create booking with received data
-        # Generate booking ID in format: ISL X X X X X
-        booking_suffix = str(uuid.uuid4()).replace('-', '').upper()[:5]
-        booking_id = f"ISL {booking_suffix[0]} {booking_suffix[1]} {booking_suffix[2]} {booking_suffix[3]} {booking_suffix[4]}"
+        # Generate booking ID in format: ISL-YYYYMMDD-XXXX
+        date_str = datetime.now().strftime("%Y%m%d")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        hash_input = f"{sender_email}{timestamp}".encode('utf-8')
+        hash_digest = hashlib.md5(hash_input).hexdigest()[:4].upper()
+        booking_id = f"ISL-{date_str}-{hash_digest}"
 
         booking_data = {
             'id': booking_id,
