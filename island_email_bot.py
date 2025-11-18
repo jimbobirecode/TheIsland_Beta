@@ -459,14 +459,22 @@ def parse_booking_from_email(text: str, subject: str = "") -> Dict:
                 break
 
     # --- EXTRACT DATES ---
-    # Common date patterns
+    # Common date patterns - ordered from most specific to least specific
     date_patterns = [
+        # Dates with keywords
         r'(?:on|for|date[:\s]*)\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
-        r'(?:on|for|date[:\s]*)\s*(\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{2,4})',
-        r'(?:on|for|date[:\s]*)\s*((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+\d{2,4})?)',
+        r'(?:on|for|date[:\s]*)\s*(\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{2,4})',
+        r'(?:on|for|date[:\s]*)\s*((?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+\d{2,4})?)',
         r'(?:on|for|date[:\s]*)\s*(next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))',
         r'(?:on|for|date[:\s]*)\s*(tomorrow)',
-        r'(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
+        # Month name + day (with or without year) - no keyword required
+        r'\b((?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+\d{2,4})?)\b',
+        r'\b(\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+\d{2,4})?)\b',
+        # Numeric dates without keywords
+        r'\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b',
+        # Relative dates
+        r'\b(tomorrow)\b',
+        r'\b(next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b',
     ]
 
     dates_found = []
@@ -494,10 +502,15 @@ def parse_booking_from_email(text: str, subject: str = "") -> Dict:
                             break
                 else:
                     # Use dateutil parser for flexible date parsing
-                    parsed_date = date_parser.parse(date_str, fuzzy=True, dayfirst=True)
+                    parsed_date = date_parser.parse(date_str, fuzzy=True, dayfirst=True, default=datetime.now().replace(day=1))
+
+                    # If no year was specified and date is in the past, assume next year
+                    if parsed_date and not re.search(r'\d{4}', date_str):
+                        if parsed_date.date() < datetime.now().date():
+                            parsed_date = parsed_date.replace(year=parsed_date.year + 1)
 
                 if parsed_date:
-                    # Only accept future dates
+                    # Only accept future dates (or today)
                     if parsed_date.date() >= datetime.now().date():
                         dates_found.append(parsed_date.strftime('%Y-%m-%d'))
             except (ValueError, TypeError):
