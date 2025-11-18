@@ -718,7 +718,93 @@ def format_error_email_html(
     """
     
     html += get_email_footer(course_name, from_email)
-    
+
+    return html
+
+
+def format_provisional_acknowledgment_email(
+    course_name: str,
+    booking_id: str,
+    player_count: int,
+    requested_dates: list,
+    guest_email: str,
+    from_email: str = "teetimes@countylouthgolfclub.com"
+) -> str:
+    """Format HTML email for provisional booking acknowledgment (no availability checking)"""
+
+    from urllib.parse import quote
+
+    html = get_email_header(course_name)
+
+    # Format dates nicely
+    dates_str = ', '.join(requested_dates) if requested_dates else 'TBD'
+
+    # URL-encode mailto parameters
+    mailto_subject = quote(f"Re: Booking {booking_id}")
+    mailto_body = quote(f"CONFIRM {booking_id}")
+
+    html += f"""
+        <div style="background: linear-gradient(135deg, #b8c1da 0%, #a3b9d9 100%); color: #24388f; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+            <h2 style="margin: 0; font-size: 28px; font-weight: 700;">⏳ Booking Request Received</h2>
+        </div>
+
+        <p class="greeting">Thank you for your tee time request at <strong>{course_name}</strong>. We have received your booking request and are reviewing availability for your preferred date and time.</p>
+
+        <div class="info-box">
+            <h3><span class="emoji">📋</span>Your Booking Request</h3>
+            <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse: collapse;">
+                <tr style="border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 12px; color: #666; font-weight: 600;">Booking ID</td>
+                    <td style="padding: 12px; text-align: right; font-weight: 600;">{booking_id}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 12px; color: #666;"><strong>📅 Requested Date(s)</strong></td>
+                    <td style="padding: 12px; text-align: right; font-weight: 700;">{dates_str}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 12px; color: #666;"><strong>👥 Number of Players</strong></td>
+                    <td style="padding: 12px; text-align: right; font-weight: 700;">{player_count}</td>
+                </tr>
+                <tr style="background-color: #fffbeb;">
+                    <td style="padding: 12px; color: #666; font-weight: 700;"><strong>💶 Estimated Fee</strong></td>
+                    <td style="padding: 12px; text-align: right; color: #10b981; font-size: 20px; font-weight: 700;">€{player_count * PER_PLAYER_FEE:.2f}</td>
+                </tr>
+            </table>
+        </div>
+
+        <div style="background: linear-gradient(to right, #e0f2fe 0%, #bae6fd 100%); border-left: 4px solid #24388f; padding: 20px; border-radius: 8px; margin: 30px 0;">
+            <h3 style="margin: 0 0 15px 0; color: #24388f;"><span class="emoji">✉️</span>How to Confirm Your Booking</h3>
+            <p style="margin: 0 0 12px 0;">Simply reply to this email with: <strong style="background-color: #D4AF37; color: #24388f; padding: 4px 8px; border-radius: 4px;">CONFIRM {booking_id}</strong></p>
+            <p style="margin: 0; font-size: 14px; color: #666;">Or click the button below to send a pre-filled confirmation email.</p>
+        </div>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="mailto:{from_email}?subject={mailto_subject}&body={mailto_body}"
+               style="background: linear-gradient(135deg, #24388f 0%, #1923c2 100%);
+                      color: #ffffff !important;
+                      padding: 15px 40px;
+                      text-decoration: none;
+                      border-radius: 8px;
+                      font-weight: 600;
+                      font-size: 16px;
+                      display: inline-block;">
+                📧 Confirm Booking Now
+            </a>
+        </div>
+
+        <div style="background-color: #f8f9fa; border-left: 3px solid #D4AF37; padding: 15px; border-radius: 6px; margin: 30px 0;">
+            <p style="margin: 0; font-size: 13px; color: #666; font-style: italic;">
+                💡 <strong>Need to make changes?</strong> Simply reply to this email with your updated requirements (date, time, or number of players).
+            </p>
+        </div>
+
+        <p style="color: #6b7280; font-size: 15px; margin-top: 30px;">
+            Thank you for choosing {course_name}. We look forward to welcoming you to our championship links course.
+        </p>
+    """
+
+    html += get_email_footer(course_name, from_email)
+
     return html
 
 
@@ -2541,15 +2627,22 @@ def handle_inbound_email():
             return jsonify({'status': 'no_dates'}), 200
         
         booking_id = log_provisional_booking(from_email, parsed, dates, message_id)
-        
-        # 🆕 NEW: Use the enhanced availability checking with alternatives
-        api_response = check_availability_with_alternatives(DEFAULT_COURSE_ID, dates, parsed.player_count, parsed)
-        
-        # Format and send email (now includes alternative date info with improved visual marking)
-        subject_line, html_body = format_availability_response(parsed, api_response, from_email, booking_id, message_id)
-        
-        # SEND THE EMAIL!
+
+        # Send provisional acknowledgment email (NO availability checking)
+        # Manual confirmation will be handled separately
+        subject_line = "Your Booking Request Received - County Louth Golf Club"
+        html_body = format_provisional_acknowledgment_email(
+            course_name="County Louth Golf Club",
+            booking_id=booking_id,
+            player_count=parsed.player_count,
+            requested_dates=dates,
+            guest_email=from_email,
+            from_email=FROM_EMAIL
+        )
+
+        # SEND THE ACKNOWLEDGMENT EMAIL!
         send_email_sendgrid(from_email, subject_line, html_body)
+        logging.info(f"✅ Sent provisional acknowledgment email (no availability check)")
         
         return jsonify({'status': 'success', 'booking_id': booking_id}), 200
             
