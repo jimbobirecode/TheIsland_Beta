@@ -94,157 +94,278 @@ THE_ISLAND_COLORS = {
     'text_light': '#6b7280',
     'gradient_start': '#24388f',
     'gradient_end': '#1923c2',
+    'gold_accent': '#D4AF37',
+    'green_success': '#2D5F3F',
+    'bg_light': '#f3f4f6',
 }
 
 
 # --- HTML EMAIL TEMPLATES ---
 
 def get_email_header():
-    """The Island branded email header"""
+    """The Island Golf Club branded email header with Outlook compatibility"""
     return f"""
-    <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); padding: 40px 20px; text-align: center; border-radius: 12px 12px 0 0;">
-        <h1 style="color: {THE_ISLAND_COLORS['white']}; font-size: 32px; margin: 0 0 10px 0; font-weight: 700; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">
-            ⛳ The Island Golf Club
-        </h1>
-        <p style="color: {THE_ISLAND_COLORS['white']}; font-size: 16px; margin: 0; opacity: 0.95;">
-            Visitor Tee Time Booking
-        </p>
-    </div>
-    """
-
-def get_email_footer():
-    """The Island branded email footer"""
-    return f"""
-    <div style="background-color: {THE_ISLAND_COLORS['charcoal']}; padding: 30px 20px; text-align: center; border-radius: 0 0 12px 12px; margin-top: 20px;">
-        <p style="color: {THE_ISLAND_COLORS['text_light']}; font-size: 14px; margin: 0 0 10px 0;">
-            The Island Golf Club
-        </p>
-        <p style="color: {THE_ISLAND_COLORS['text_light']}; font-size: 12px; margin: 0;">
-            Corballis, Donabate, Co. Dublin, K36 KH85, Ireland
-        </p>
-        <p style="color: {THE_ISLAND_COLORS['text_light']}; font-size: 12px; margin: 10px 0 0 0;">
-            📞 +353 1 843 6205 | 📧 bookings@theislandgolfclub.ie
-        </p>
-    </div>
-    """
-
-def format_confirmation_email(booking_data: Dict) -> str:
-    """Generate The Island branded HTML confirmation email"""
-    
-    booking_id = booking_data.get('id', 'N/A')
-    player_name = booking_data.get('name', 'N/A')
-    email = booking_data.get('email', 'N/A')
-    phone = booking_data.get('phone', 'N/A')
-    num_players = booking_data.get('num_players', 0)
-    preferred_date = booking_data.get('preferred_date', 'N/A')
-    preferred_time = booking_data.get('preferred_time', 'N/A')
-    total_fee = num_players * PER_PLAYER_FEE
-    
-    html_content = f"""
     <!DOCTYPE html>
-    <html>
+    <html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <title>The Island Golf Club - Booking</title>
+
+        <!--[if mso]>
+        <noscript>
+        <xml>
+            <o:OfficeDocumentSettings>
+                <o:AllowPNG/>
+                <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+        </xml>
+        </noscript>
+        <style type="text/css">
+            body, table, td, p, div, span, a {{
+                font-family: Georgia, 'Times New Roman', serif !important;
+            }}
+            table {{
+                border-collapse: collapse !important;
+                mso-table-lspace: 0pt !important;
+                mso-table-rspace: 0pt !important;
+            }}
+        </style>
+        <![endif]-->
+
+        <style type="text/css">
+            body {{
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                font-family: Georgia, 'Times New Roman', serif;
+                background-color: {THE_ISLAND_COLORS['bg_light']};
+            }}
+
+            table {{
+                border-collapse: collapse;
+                mso-table-lspace: 0pt;
+                mso-table-rspace: 0pt;
+            }}
+
+            .email-wrapper {{
+                background-color: {THE_ISLAND_COLORS['bg_light']};
+                padding: 20px;
+            }}
+
+            .email-container {{
+                background: #ffffff;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }}
+
+            .header {{
+                background: linear-gradient(135deg, {THE_ISLAND_COLORS['gradient_start']} 0%, {THE_ISLAND_COLORS['gradient_end']} 100%);
+                background-color: {THE_ISLAND_COLORS['navy_primary']};
+                padding: 40px 30px;
+                text-align: center;
+                color: #ffffff;
+                position: relative;
+            }}
+
+            .header::before {{
+                content: '';
+                position: absolute;
+                top: -50px;
+                right: -50px;
+                width: 200px;
+                height: 200px;
+                background: radial-gradient(circle, rgba(212, 175, 55, 0.2) 0%, transparent 70%);
+                border-radius: 50%;
+            }}
+
+            .header h1 {{
+                margin: 0 0 10px 0;
+                font-size: 32px;
+                font-weight: 700;
+                color: #ffffff;
+                letter-spacing: -0.5px;
+                position: relative;
+                z-index: 1;
+            }}
+
+            .header p {{
+                margin: 0;
+                color: {THE_ISLAND_COLORS['gold_accent']};
+                font-size: 16px;
+                font-weight: 600;
+                position: relative;
+                z-index: 1;
+            }}
+
+            .est-badge {{
+                display: inline-block;
+                margin-top: 8px;
+                padding: 4px 12px;
+                background: rgba(212, 175, 55, 0.2);
+                border: 1px solid {THE_ISLAND_COLORS['gold_accent']};
+                border-radius: 20px;
+                color: {THE_ISLAND_COLORS['gold_accent']};
+                font-size: 12px;
+                letter-spacing: 1px;
+            }}
+
+            .content {{
+                padding: 40px 30px;
+            }}
+
+            .info-box {{
+                background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%);
+                background-color: #f0f9ff;
+                border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']};
+                border-radius: 8px;
+                padding: 20px;
+                margin: 20px 0;
+            }}
+
+            .booking-table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 25px 0;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                border: 1px solid {THE_ISLAND_COLORS['border_grey']};
+            }}
+
+            .booking-table tr {{
+                border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};
+            }}
+
+            .booking-table td {{
+                padding: 15px 12px;
+                color: {THE_ISLAND_COLORS['text_dark']};
+            }}
+
+            .button-link {{
+                background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);
+                background-color: {THE_ISLAND_COLORS['navy_primary']};
+                color: #ffffff !important;
+                padding: 15px 40px;
+                text-decoration: none;
+                border-radius: 8px;
+                font-weight: 600;
+                font-size: 16px;
+                display: inline-block;
+                box-shadow: 0 4px 15px rgba(36, 56, 143, 0.3);
+            }}
+
+            .footer {{
+                background: linear-gradient(135deg, {THE_ISLAND_COLORS['gradient_start']} 0%, {THE_ISLAND_COLORS['gradient_end']} 100%);
+                background-color: {THE_ISLAND_COLORS['navy_primary']};
+                padding: 30px;
+                text-align: center;
+                color: #ffffff;
+            }}
+
+            .footer strong {{
+                color: {THE_ISLAND_COLORS['gold_accent']};
+                font-size: 18px;
+            }}
+
+            .footer a {{
+                color: {THE_ISLAND_COLORS['gold_accent']};
+                text-decoration: none;
+                font-weight: 600;
+            }}
+
+            @media only screen and (max-width: 600px) {{
+                .header h1 {{ font-size: 24px !important; }}
+                .content {{ padding: 20px 15px !important; }}
+            }}
+        </style>
     </head>
-    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background-color: {THE_ISLAND_COLORS['light_grey']};">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: {THE_ISLAND_COLORS['light_grey']}; padding: 40px 20px;">
+    <body style="margin: 0; padding: 0; background-color: {THE_ISLAND_COLORS['bg_light']};">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" class="email-wrapper" style="border-collapse: collapse;">
             <tr>
-                <td align="center">
-                    <table width="600" cellpadding="0" cellspacing="0" style="background-color: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); overflow: hidden; max-width: 100%;">
+                <td style="padding: 20px; background-color: {THE_ISLAND_COLORS['bg_light']};">
+                    <table role="presentation" class="email-container" align="center" border="0" cellpadding="0" cellspacing="0" width="800" style="max-width: 800px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
                         <tr>
-                            <td>
-                                {get_email_header()}
+                            <td class="header" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['gradient_start']} 0%, {THE_ISLAND_COLORS['gradient_end']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; padding: 40px 30px; text-align: center; color: #ffffff; position: relative;">
+                                <!--[if gte mso 9]>
+                                <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:800px;height:150px;">
+                                <v:fill type="gradient" color="{THE_ISLAND_COLORS['gradient_end']}" color2="{THE_ISLAND_COLORS['gradient_start']}" angle="135" />
+                                <v:textbox inset="40px,40px,40px,40px">
+                                <![endif]-->
+                                <div style="color: #ffffff;">
+                                    <h1 style="margin: 0 0 10px 0; font-size: 32px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">
+                                        ⛳ The Island Golf Club
+                                    </h1>
+                                    <p style="margin: 0; color: {THE_ISLAND_COLORS['gold_accent']}; font-size: 16px; font-weight: 600;">
+                                        Visitor Tee Time Booking
+                                    </p>
+                                    <div class="est-badge" style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: rgba(212, 175, 55, 0.2); border: 1px solid {THE_ISLAND_COLORS['gold_accent']}; border-radius: 20px; color: {THE_ISLAND_COLORS['gold_accent']}; font-size: 12px; letter-spacing: 1px;">
+                                        CHAMPIONSHIP LINKS
+                                    </div>
+                                </div>
+                                <!--[if gte mso 9]>
+                                </v:textbox>
+                                </v:rect>
+                                <![endif]-->
                             </td>
                         </tr>
                         <tr>
-                            <td style="padding: 40px 30px;">
-                                <div style="background-color: {THE_ISLAND_COLORS['royal_blue']}; color: white; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
-                                    <h2 style="margin: 0; font-size: 24px; font-weight: 600;">✅ Booking Confirmed!</h2>
-                                </div>
-                                
-                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
-                                    Dear <strong>{player_name}</strong>,
-                                </p>
-                                
-                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
-                                    We're delighted to confirm your tee time booking at The Island Golf Club, one of Ireland's premier links courses.
-                                </p>
-                                
-                                <div style="background-color: {THE_ISLAND_COLORS['light_grey']}; border-left: 4px solid {THE_ISLAND_COLORS['royal_blue']}; padding: 20px; border-radius: 8px; margin: 25px 0;">
-                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 15px 0; font-weight: 600;">
-                                        📋 Booking Details
-                                    </h3>
-                                    
-                                    <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse: collapse;">
+                            <td class="content" style="padding: 40px 30px;">
+    """
+
+def get_email_footer():
+    """The Island Golf Club branded email footer with Outlook compatibility"""
+    return f"""
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="footer" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['gradient_start']} 0%, {THE_ISLAND_COLORS['gradient_end']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; padding: 30px; text-align: center; color: #ffffff; position: relative;">
+                                <!--[if gte mso 9]>
+                                <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:800px;height:180px;">
+                                <v:fill type="gradient" color="{THE_ISLAND_COLORS['gradient_end']}" color2="{THE_ISLAND_COLORS['gradient_start']}" angle="135" />
+                                <v:textbox inset="30px,30px,30px,30px">
+                                <![endif]-->
+                                <div style="color: #ffffff;">
+                                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
                                         <tr>
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 8px 0; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>Booking ID:</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 8px 0; text-align: right; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {booking_id}
+                                            <td style="padding: 0 0 15px 0; text-align: center;">
+                                                <strong style="color: {THE_ISLAND_COLORS['gold_accent']}; font-size: 18px; letter-spacing: 0.5px;">
+                                                    The Island Golf Club
+                                                </strong>
                                             </td>
                                         </tr>
                                         <tr>
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 8px 0; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>📅 Date:</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 8px 0; text-align: right; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {preferred_date}
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 8px 0; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>🕐 Time:</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 8px 0; text-align: right; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {preferred_time}
+                                            <td style="padding: 0 0 10px 0; text-align: center;">
+                                                <p style="margin: 0; color: #ffffff; font-size: 14px; line-height: 1.6;">
+                                                    Corballis, Donabate, Co. Dublin, K36 KH85, Ireland
+                                                </p>
                                             </td>
                                         </tr>
                                         <tr>
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 8px 0; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>👥 Players:</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 8px 0; text-align: right; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {num_players}
+                                            <td style="padding: 0 0 15px 0; text-align: center;">
+                                                <p style="margin: 0; color: {THE_ISLAND_COLORS['powder_blue']}; font-size: 13px;">
+                                                    <a href="tel:+35318436205" style="color: {THE_ISLAND_COLORS['gold_accent']}; text-decoration: none; font-weight: 600;">📞 +353 1 843 6205</a>
+                                                    <span style="color: {THE_ISLAND_COLORS['powder_blue']}; margin: 0 8px;">|</span>
+                                                    <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {THE_ISLAND_COLORS['gold_accent']}; text-decoration: none; font-weight: 600;">📧 bookings@theislandgolfclub.ie</a>
+                                                </p>
                                             </td>
                                         </tr>
                                         <tr>
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 8px 0;">
-                                                <strong>💶 Total Fee:</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['royal_blue']}; font-size: 18px; font-weight: 700; padding: 8px 0; text-align: right;">
-                                                €{total_fee:.2f}
+                                            <td style="padding: 15px 0 0 0; text-align: center; border-top: 1px solid rgba(212, 175, 55, 0.3);">
+                                                <p style="margin: 0; color: {THE_ISLAND_COLORS['powder_blue']}; font-size: 12px; line-height: 1.5;">
+                                                    Championship Links Golf Course
+                                                </p>
                                             </td>
                                         </tr>
                                     </table>
                                 </div>
-                                
-                                <div style="background-color: #e8f0fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 15px; border-radius: 8px; margin: 25px 0;">
-                                    <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; margin: 0; line-height: 1.6;">
-                                        <strong>ℹ️ Important:</strong> Please arrive 30 minutes before your tee time. Payment is required upon arrival. We accept all major credit cards and cash.
-                                    </p>
-                                </div>
-                                
-                                <div style="text-align: center; margin: 30px 0;">
-                                    <a href="mailto:{CLUB_BOOKING_EMAIL}" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(36, 56, 143, 0.3);">
-                                        📧 Contact Us
-                                    </a>
-                                </div>
-                                
-                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; line-height: 1.6; margin: 25px 0 0 0;">
-                                    We look forward to welcoming you to The Island Golf Club!
-                                </p>
-                                
-                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; line-height: 1.6; margin: 15px 0 0 0;">
-                                    Best regards,<br>
-                                    <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club Team</strong>
-                                </p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>
-                                {get_email_footer()}
+                                <!--[if gte mso 9]>
+                                </v:textbox>
+                                </v:rect>
+                                <![endif]-->
                             </td>
                         </tr>
                     </table>
@@ -254,12 +375,116 @@ def format_confirmation_email(booking_data: Dict) -> str:
     </body>
     </html>
     """
-    
+
+def format_confirmation_email(booking_data: Dict) -> str:
+    """Generate The Island branded HTML confirmation email"""
+
+    booking_id = booking_data.get('id', 'N/A')
+    player_name = booking_data.get('name', 'N/A')
+    email = booking_data.get('email', 'N/A')
+    phone = booking_data.get('phone', 'N/A')
+    num_players = booking_data.get('num_players', 0)
+    preferred_date = booking_data.get('preferred_date', 'N/A')
+    preferred_time = booking_data.get('preferred_time', 'N/A')
+    total_fee = num_players * PER_PLAYER_FEE
+
+    html_content = f"""
+{get_email_header()}
+                                <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['green_success']} 0%, #1e4d2e 100%); background-color: {THE_ISLAND_COLORS['green_success']}; color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(45, 95, 63, 0.3);">
+                                    <h2 style="margin: 0; font-size: 28px; font-weight: 700; color: #ffffff;">✅ Booking Confirmed!</h2>
+                                </div>
+
+                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
+                                    Dear <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">{player_name}</strong>,
+                                </p>
+
+                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 30px 0;">
+                                    We're delighted to confirm your tee time booking at <strong>The Island Golf Club</strong>, one of Ireland's premier championship links courses.
+                                </p>
+
+                                <div class="info-box" style="background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%); background-color: #f0f9ff; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; border-radius: 8px; padding: 25px; margin: 30px 0;">
+                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0; font-weight: 700;">
+                                        📋 Confirmed Booking Details
+                                    </h3>
+
+                                    <table class="booking-table" width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border-radius: 8px; overflow: hidden; border: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                        <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
+                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                Booking ID
+                                            </td>
+                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                {booking_id}
+                                            </td>
+                                        </tr>
+                                        <tr style="background-color: #ffffff;">
+                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                <strong>📅 Date</strong>
+                                            </td>
+                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                {preferred_date}
+                                            </td>
+                                        </tr>
+                                        <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
+                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                <strong>🕐 Tee Time</strong>
+                                            </td>
+                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                {preferred_time}
+                                            </td>
+                                        </tr>
+                                        <tr style="background-color: #ffffff;">
+                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                <strong>👥 Number of Players</strong>
+                                            </td>
+                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                {num_players}
+                                            </td>
+                                        </tr>
+                                        <tr style="background-color: #fffbeb;">
+                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; padding: 18px 12px; font-weight: 700;">
+                                                <strong>💶 Total Fee</strong>
+                                            </td>
+                                            <td style="color: {THE_ISLAND_COLORS['green_success']}; font-size: 22px; font-weight: 700; padding: 18px 12px; text-align: right;">
+                                                €{total_fee:.2f}
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+
+                                <div style="background: linear-gradient(to right, #e8f0fe 0%, #dbeafe 100%); background-color: #e8f0fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
+                                    <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; margin: 0 0 12px 0; line-height: 1.7;">
+                                        <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">ℹ️ Important Information:</strong>
+                                    </p>
+                                    <ul style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; margin: 0; padding-left: 20px; line-height: 1.8;">
+                                        <li>Please arrive <strong>30 minutes before</strong> your tee time</li>
+                                        <li>Payment is required upon arrival</li>
+                                        <li>We accept all major credit cards and cash</li>
+                                        <li>Please contact us immediately if you need to make changes</li>
+                                    </ul>
+                                </div>
+
+                                <div style="text-align: center; margin: 35px 0;">
+                                    <a href="mailto:{CLUB_BOOKING_EMAIL}" class="button-link" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff !important; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(36, 56, 143, 0.3);">
+                                        📧 Contact Club Office
+                                    </a>
+                                </div>
+
+                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
+                                    We look forward to welcoming you to The Island Golf Club and hope you enjoy your round on our championship links course.
+                                </p>
+
+                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; line-height: 1.6; margin: 20px 0 0 0;">
+                                    Best regards,<br>
+                                    <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club Team</strong>
+                                </p>
+{get_email_footer()}
+    """
+
     return html_content
 
 
 def format_provisional_email(booking_data: Dict) -> str:
-    """Generate The Island branded provisional booking email"""
+    """Generate The Island branded provisional booking email with reply-to-confirm workflow"""
 
     booking_id = booking_data.get('id', 'N/A')
     player_name = booking_data.get('name', 'N/A')
@@ -271,140 +496,125 @@ def format_provisional_email(booking_data: Dict) -> str:
     alternate_date = booking_data.get('alternate_date')
     total_fee = num_players * PER_PLAYER_FEE
 
-    # Build alternate date row if provided
+    # Build alternate date row if provided (with highlighted styling)
     alternate_row = ""
     if alternate_date:
         alternate_row = f"""
-                                        <tr>
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 8px 0; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>📅 Alternate Date:</strong>
+                                        <tr style="background-color: #fef3c7;">
+                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                <strong>📅 Alternate Date</strong>
                                             </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 8px 0; text-align: right; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
                                                 {alternate_date}
                                             </td>
                                         </tr>
         """
-    
+
     html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background-color: {THE_ISLAND_COLORS['light_grey']};">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: {THE_ISLAND_COLORS['light_grey']}; padding: 40px 20px;">
-            <tr>
-                <td align="center">
-                    <table width="600" cellpadding="0" cellspacing="0" style="background-color: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); overflow: hidden; max-width: 100%;">
-                        <tr>
-                            <td>
-                                {get_email_header()}
-                            </td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 40px 30px;">
-                                <div style="background-color: {THE_ISLAND_COLORS['powder_blue']}; color: {THE_ISLAND_COLORS['navy_primary']}; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
-                                    <h2 style="margin: 0; font-size: 24px; font-weight: 600;">⏳ Booking Request Received</h2>
+{get_email_header()}
+                                <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['powder_blue']} 0%, #a3b9d9 100%); background-color: {THE_ISLAND_COLORS['powder_blue']}; color: {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(184, 193, 218, 0.4);">
+                                    <h2 style="margin: 0; font-size: 28px; font-weight: 700; color: {THE_ISLAND_COLORS['navy_primary']};">⏳ Booking Request Received</h2>
                                 </div>
-                                
-                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
-                                    Dear <strong>{player_name}</strong>,
+
+                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
+                                    Dear <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">{player_name}</strong>,
                                 </p>
-                                
-                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
-                                    Thank you for your tee time request at The Island Golf Club. We have received your booking and our team is reviewing availability.
+
+                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 30px 0;">
+                                    Thank you for your tee time request at <strong>The Island Golf Club</strong>. We have received your booking request and are reviewing availability for your preferred date and time.
                                 </p>
-                                
-                                <div style="background-color: {THE_ISLAND_COLORS['light_grey']}; border-left: 4px solid {THE_ISLAND_COLORS['powder_blue']}; padding: 20px; border-radius: 8px; margin: 25px 0;">
-                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 15px 0; font-weight: 600;">
-                                        📋 Your Request
+
+                                <div class="info-box" style="background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%); background-color: #f0f9ff; border-left: 4px solid {THE_ISLAND_COLORS['powder_blue']}; border-radius: 8px; padding: 25px; margin: 30px 0;">
+                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0; font-weight: 700;">
+                                        📋 Your Booking Request
                                     </h3>
-                                    
-                                    <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse: collapse;">
-                                        <tr>
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 8px 0; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>Booking ID:</strong>
+
+                                    <table class="booking-table" width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border-radius: 8px; overflow: hidden; border: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                        <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
+                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                Booking ID
                                             </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 8px 0; text-align: right; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
                                                 {booking_id}
                                             </td>
                                         </tr>
-                                        <tr>
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 8px 0; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>📅 Requested Date:</strong>
+                                        <tr style="background-color: #ffffff;">
+                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                <strong>📅 Requested Date</strong>
                                             </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 8px 0; text-align: right; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
                                                 {preferred_date}
                                             </td>
                                         </tr>
                                         {alternate_row}
-                                        <tr>
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 8px 0; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>🕐 Requested Time:</strong>
+                                        <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
+                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                <strong>🕐 Requested Time</strong>
                                             </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 8px 0; text-align: right; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
                                                 {preferred_time}
                                             </td>
                                         </tr>
-                                        <tr>
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 8px 0; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>👥 Players:</strong>
+                                        <tr style="background-color: #ffffff;">
+                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                <strong>👥 Number of Players</strong>
                                             </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 8px 0; text-align: right; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
                                                 {num_players}
                                             </td>
                                         </tr>
-                                        <tr>
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 8px 0;">
-                                                <strong>💶 Estimated Fee:</strong>
+                                        <tr style="background-color: #fffbeb;">
+                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; padding: 18px 12px; font-weight: 700;">
+                                                <strong>💶 Estimated Fee</strong>
                                             </td>
-                                            <td style="color: {THE_ISLAND_COLORS['royal_blue']}; font-size: 18px; font-weight: 700; padding: 8px 0; text-align: right;">
+                                            <td style="color: {THE_ISLAND_COLORS['royal_blue']}; font-size: 22px; font-weight: 700; padding: 18px 12px; text-align: right;">
                                                 €{total_fee:.2f}
                                             </td>
                                         </tr>
                                     </table>
                                 </div>
-                                
-                                <div style="background-color: #e8f0fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 15px; border-radius: 8px; margin: 25px 0;">
-                                    <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; margin: 0 0 10px 0; line-height: 1.6;">
-                                        <strong>ℹ️ What's Next?</strong><br>
-                                        To confirm your booking, simply reply to this email with: <strong>CONFIRM {booking_id}</strong>
+
+                                <div style="background: linear-gradient(to right, #e0f2fe 0%, #bae6fd 100%); background-color: #e0f2fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
+                                    <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; margin: 0 0 15px 0; line-height: 1.7;">
+                                        <strong style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 17px;">✉️ How to Confirm Your Booking</strong>
                                     </p>
-                                    <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; margin: 0; line-height: 1.6;">
-                                        To request changes, reply with your preferred date, time, or number of players.
+                                    <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; margin: 0 0 12px 0; line-height: 1.7;">
+                                        Simply reply to this email with: <strong style="background-color: {THE_ISLAND_COLORS['gold_accent']}; color: {THE_ISLAND_COLORS['navy_primary']}; padding: 4px 8px; border-radius: 4px;">CONFIRM {booking_id}</strong>
+                                    </p>
+                                    <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; margin: 0; line-height: 1.7;">
+                                        Or click the button below to send a pre-filled confirmation email.
                                     </p>
                                 </div>
 
-                                <div style="text-align: center; margin: 30px 0;">
-                                    <a href="mailto:{CLUB_BOOKING_EMAIL}?subject=Re: Booking {booking_id}&body=CONFIRM {booking_id}" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(36, 56, 143, 0.3);">
-                                        📧 Confirm Booking
-                                    </a>
+                                <div style="text-align: center; margin: 35px 0;">
+                                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+                                        <tr>
+                                            <td style="border-radius: 8px; background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);">
+                                                <a href="mailto:{CLUB_BOOKING_EMAIL}?subject=Re: Booking {booking_id}&body=CONFIRM {booking_id}" class="button-link" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff !important; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(36, 56, 143, 0.3);">
+                                                    📧 Confirm Booking Now
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    </table>
                                 </div>
-                                
-                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; line-height: 1.6; margin: 25px 0 0 0;">
-                                    Thank you for choosing The Island Golf Club.
+
+                                <div style="background-color: {THE_ISLAND_COLORS['light_grey']}; border-left: 3px solid {THE_ISLAND_COLORS['gold_accent']}; padding: 15px; border-radius: 6px; margin: 30px 0;">
+                                    <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 13px; margin: 0; line-height: 1.6; font-style: italic;">
+                                        💡 <strong>Need to make changes?</strong> Simply reply to this email with your updated requirements (date, time, or number of players).
+                                    </p>
+                                </div>
+
+                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
+                                    Thank you for choosing The Island Golf Club. We look forward to welcoming you to our championship links course.
                                 </p>
-                                
-                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; line-height: 1.6; margin: 15px 0 0 0;">
+
+                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; line-height: 1.6; margin: 20px 0 0 0;">
                                     Best regards,<br>
                                     <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club Team</strong>
                                 </p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>
-                                {get_email_footer()}
-                            </td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-        </table>
-    </body>
-    </html>
+{get_email_footer()}
     """
-    
+
     return html_content
 
 
