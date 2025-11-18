@@ -885,9 +885,13 @@ def parse_booking_from_email(text: str, subject: str = "") -> Dict:
 
     # --- EXTRACT PHONE NUMBER ---
     phone_patterns = [
+        # Pattern with explicit phone keywords (highest priority)
         r'(?:phone|tel|mobile|cell|contact)\s*:?\s*([+]?[\d\s\-\(\)]{9,})',
-        r'([+]?\d{1,4}[\s\-]?\(?\d{1,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{3,4})',
+        # International format with country code
+        r'([+]\d{1,4}[\s\-]?\(?\d{1,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{3,4})',
+        # Standard format with separators (hyphens, spaces, or parentheses)
         r'(\d{3}[\s\-]\d{3,4}[\s\-]\d{4})',
+        r'(\(\d{3}\)[\s\-]?\d{3}[\s\-]?\d{4})',
     ]
 
     for pattern in phone_patterns:
@@ -898,13 +902,19 @@ def parse_booking_from_email(text: str, subject: str = "") -> Dict:
             phone = re.sub(r'[^\d+\(\)\-\s]', '', phone).strip()
             # Count digits only
             digit_count = len(re.sub(r'[^\d]', '', phone))
-            if digit_count >= 7:  # At least 7 digits for a valid phone
+            # Require at least 10 digits for valid phone (avoid matching booking IDs like 20251118)
+            # Or 7+ digits if it has proper formatting (spaces, hyphens, parentheses)
+            has_formatting = bool(re.search(r'[\s\-\(\)]', phone))
+            if (digit_count >= 10) or (digit_count >= 7 and has_formatting):
                 result['phone'] = phone
                 break
 
     # --- EXTRACT DATES ---
     # Common date patterns - ordered from most specific to least specific
     date_patterns = [
+        # ISO date format (YYYY-MM-DD or YYYY/MM/DD) - most specific, check first
+        r'(?:on|for|date[:\s]*)\s*(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})',
+        r'(?<!\d)(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})(?!\d)',
         # Dates with keywords
         r'(?:on|for|date[:\s]*)\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
         r'(?:on|for|date[:\s]*)\s*(\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{2,4})',
@@ -945,8 +955,15 @@ def parse_booking_from_email(text: str, subject: str = "") -> Dict:
                             parsed_date = today + timedelta(days=days_ahead)
                             break
                 else:
-                    # Use dateutil parser for flexible date parsing
-                    parsed_date = date_parser.parse(date_str, fuzzy=True, dayfirst=True, default=datetime.now().replace(day=1))
+                    # Check if this is ISO format (YYYY-MM-DD or YYYY/MM/DD)
+                    is_iso_format = re.match(r'^\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}$', date_str)
+
+                    if is_iso_format:
+                        # Parse ISO format with yearfirst=True
+                        parsed_date = date_parser.parse(date_str, yearfirst=True, default=datetime.now().replace(day=1))
+                    else:
+                        # Use dateutil parser for flexible date parsing with dayfirst for European format
+                        parsed_date = date_parser.parse(date_str, fuzzy=True, dayfirst=True, default=datetime.now().replace(day=1))
 
                     # If no year was specified and date is in the past, assume next year
                     if parsed_date and not re.search(r'\d{4}', date_str):
