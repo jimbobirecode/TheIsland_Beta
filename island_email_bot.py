@@ -376,6 +376,246 @@ def get_email_footer():
     </html>
     """
 
+def build_booking_link(date: str, time: str, players: int, guest_email: str, booking_id: str = None) -> str:
+    """Generate mailto link for Reserve Now button"""
+
+    tracking_email = f"{TRACKING_EMAIL_PREFIX}@bookings.teemail.io"
+    club_email = CLUB_BOOKING_EMAIL
+
+    # Format booking details
+    subject = quote(f"CONFIRM BOOKING - {date} at {time}")
+
+    body_lines = [
+        f"CONFIRM BOOKING",
+        f"",
+        f"Booking Details:",
+        f"- Date: {date}",
+        f"- Time: {time}",
+        f"- Players: {players}",
+        f"- Green Fee: €{PER_PLAYER_FEE:.0f} per player",
+        f"- Total: €{players * PER_PLAYER_FEE:.0f}",
+        f"",
+        f"Guest Email: {guest_email}",
+    ]
+
+    if booking_id:
+        body_lines.insert(3, f"- Booking ID: {booking_id}")
+
+    body = quote("\n".join(body_lines))
+
+    # Create mailto link with both tracking and club email
+    mailto_link = f"mailto:{club_email}?cc={tracking_email}&subject={subject}&body={body}"
+
+    return mailto_link
+
+
+def create_book_button(booking_link: str, button_text: str = "Reserve Now") -> str:
+    """Create HTML for Reserve Now button"""
+    return f"""
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+            <tr>
+                <td style="border-radius: 6px; background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);">
+                    <a href="{booking_link}" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff !important; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+                        {button_text}
+                    </a>
+                </td>
+            </tr>
+        </table>
+    """
+
+
+def format_availability_email(results: list, player_count: int, guest_email: str, booking_id: str = None,
+                             used_alternatives: bool = False, original_dates: list = None) -> str:
+    """Generate The Island Golf Club branded HTML email with available tee times"""
+
+    html = get_email_header()
+
+    # Opening greeting
+    html += f"""
+                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
+                                    Thank you for your enquiry. We are delighted to present the following available tee times at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>, one of Ireland's finest championship links courses:
+                                </p>
+
+                                <div style="background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%); background-color: #f0f9ff; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; border-radius: 8px; padding: 20px; margin: 25px 0;">
+                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 15px 0; font-weight: 700;">
+                                        👥 Booking Details
+                                    </h3>
+                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Players:</strong> {player_count}</p>
+                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Green Fee:</strong> €{PER_PLAYER_FEE:.0f} per player</p>
+                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Status:</strong> <span style="display: inline-block; padding: 4px 10px; background: #ecfdf5; color: {THE_ISLAND_COLORS['green_success']}; border: 1px solid {THE_ISLAND_COLORS['green_success']}; border-radius: 15px; font-size: 13px; font-weight: 600;">{'✓ Alternative Dates Found' if used_alternatives else '✓ Available Times Found'}</span></p>
+                                </div>
+    """
+
+    # Add alternative dates notice if applicable
+    if used_alternatives and original_dates:
+        original_dates_str = ', '.join(original_dates)
+        plural = 's' if len(original_dates) > 1 else ''
+        were_was = 'were' if len(original_dates) > 1 else 'was'
+
+        html += f"""
+                                <div style="background: linear-gradient(to right, #FFFEF7 0%, #FFF9E6 100%); background-color: #FFFEF7; border: 2px solid {THE_ISLAND_COLORS['gold_accent']}; border-radius: 8px; padding: 20px; margin: 25px 0;">
+                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">
+                                        🎯 Alternative Dates Found!
+                                    </h3>
+                                    <p style="font-size: 15px; margin: 0 0 12px 0; line-height: 1.6; color: {THE_ISLAND_COLORS['text_dark']};">
+                                        Your requested date{plural} <strong style="color: #8B7355;">({original_dates_str})</strong> {were_was} fully booked.
+                                    </p>
+                                    <div style="background: rgba(212, 175, 55, 0.15); padding: 12px; border-radius: 6px; border-left: 3px solid {THE_ISLAND_COLORS['gold_accent']};">
+                                        <p style="margin: 0; font-weight: 600; color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 15px;">
+                                            ✅ Great news! We found available tee times within the same week
+                                        </p>
+                                        <p style="margin: 8px 0 0 0; color: {THE_ISLAND_COLORS['text_medium']}; line-height: 1.6; font-size: 14px;">
+                                            These alternative dates offer the same championship golf experience and are clearly marked below with <strong style="color: {THE_ISLAND_COLORS['gold_accent']};">gold badges</strong>.
+                                        </p>
+                                    </div>
+                                </div>
+        """
+
+    # Group results by date
+    dates_list = sorted(list(set([r["date"] for r in results])))
+
+    for date in dates_list:
+        date_results = [r for r in results if r["date"] == date]
+
+        if not date_results:
+            continue
+
+        # Check if this is an alternative date
+        is_alt_date = date_results[0].get('is_alternative_date', False)
+
+        # Start alternative date wrapper if needed
+        if is_alt_date:
+            html += f"""
+                                <div style="background: linear-gradient(to right, #FFFEF7 0%, #FFF9E6 100%); background-color: #FFFEF7; border: 2px solid {THE_ISLAND_COLORS['gold_accent']}; padding: 20px; margin: 30px 0; border-radius: 8px;">
+            """
+
+        gold_color = THE_ISLAND_COLORS['gold_accent']
+        date_badge = f'<span style="display: inline-block; padding: 4px 12px; background: #fef3c7; color: #92400e; border: 1px solid {gold_color}; border-radius: 15px; font-size: 13px; font-weight: 600; margin-left: 10px;">📅 Alternative Date</span>' if is_alt_date else ''
+
+        html += f"""
+                                <div style="margin: 30px 0;">
+                                    <h2 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 22px; font-weight: 700; margin: 0 0 15px 0; padding-bottom: 10px; border-bottom: 3px solid {THE_ISLAND_COLORS['gold_accent']};">
+                                        🗓️ {date} {date_badge}
+                                    </h2>
+                                    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 20px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); border: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                        <thead>
+                                            <tr style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff;">
+                                                <th style="padding: 15px 12px; color: #ffffff; font-weight: 600; text-align: left; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Tee Time</th>
+                                                <th style="padding: 15px 12px; color: #ffffff; font-weight: 600; text-align: center; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Availability</th>
+                                                <th style="padding: 15px 12px; color: #ffffff; font-weight: 600; text-align: left; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Green Fee</th>
+                                                <th style="padding: 15px 12px; color: #ffffff; font-weight: 600; text-align: center; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Booking</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+        """
+
+        row_count = 0
+        for result in date_results:
+            time = result["time"]
+            row_bg = '#f9fafb' if row_count % 2 == 0 else '#ffffff'
+            if is_alt_date:
+                row_bg = '#FFFEF7'
+
+            booking_link = build_booking_link(date, time, player_count, guest_email, booking_id)
+            button_html = create_book_button(booking_link, "Reserve Now")
+
+            html += f"""
+                                            <tr style="background-color: {row_bg}{'; border-left: 3px solid ' + THE_ISLAND_COLORS['gold_accent'] if is_alt_date else ''};">
+                                                <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};"><strong style="font-size: 16px; color: {THE_ISLAND_COLORS['navy_primary']};">{time}</strong></td>
+                                                <td style="padding: 15px 12px; text-align: center; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};"><span style="display: inline-block; padding: 4px 10px; background: #ecfdf5; color: {THE_ISLAND_COLORS['green_success']}; border: 1px solid {THE_ISLAND_COLORS['green_success']}; border-radius: 15px; font-size: 13px; font-weight: 600;">✓ Available</span></td>
+                                                <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};"><span style="color: {THE_ISLAND_COLORS['royal_blue']}; font-weight: 700; font-size: 15px;">€{PER_PLAYER_FEE:.0f} pp</span></td>
+                                                <td style="padding: 15px 12px; text-align: center; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                                                    {button_html}
+                                                </td>
+                                            </tr>
+            """
+            row_count += 1
+
+        html += """
+                                        </tbody>
+                                    </table>
+                                </div>
+        """
+
+        # Close alternative date wrapper if needed
+        if is_alt_date:
+            html += "</div>"
+
+    # Add championship links description
+    html += f"""
+                                <div style="background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%); background-color: #f0f9ff; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; border-radius: 8px; padding: 20px; margin: 30px 0;">
+                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">
+                                        ⛳ Championship Links Experience
+                                    </h3>
+                                    <p style="margin: 0; color: {THE_ISLAND_COLORS['text_dark']}; line-height: 1.7;">
+                                        The Island Golf Club features a classic links layout offering stunning views and an authentic Irish golfing experience. Our championship course provides golfers with a memorable round of links golf.
+                                    </p>
+                                </div>
+
+                                <div style="background: linear-gradient(to right, #e8f0fe 0%, #dbeafe 100%); background-color: #e8f0fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; border-radius: 8px; padding: 20px; margin: 30px 0;">
+                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">
+                                        💡 How to Confirm Your Booking
+                                    </h3>
+                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Step 1:</strong> Click any "Reserve Now" button above for your preferred tee time</p>
+                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Step 2:</strong> Your email client will open with a pre-filled booking request</p>
+                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Step 3:</strong> Simply send the email - we'll confirm within 30 minutes</p>
+                                    <p style="margin-top: 12px; font-style: italic; color: {THE_ISLAND_COLORS['text_medium']};font-size: 14px;">Alternatively, you may telephone us at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">+353 1 843 6205</strong></p>
+                                </div>
+    """
+
+    html += get_email_footer()
+
+    return html
+
+
+def format_no_availability_email(player_count: int, original_dates: list = None, checked_alternatives: bool = False) -> str:
+    """Generate HTML email when no availability found"""
+
+    html = get_email_header()
+
+    html += f"""
+                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
+                                    Thank you for your enquiry regarding tee times at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>.
+                                </p>
+
+                                <div style="background: linear-gradient(to right, #fef2f2 0%, #fee2e2 100%); background-color: #fef2f2; border-left: 4px solid #dc2626; border-radius: 8px; padding: 20px; margin: 25px 0;">
+                                    <h3 style="color: #dc2626; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">
+                                        ⚠️ No Availability Found
+                                    </h3>
+                                    <p style="margin: 0; color: {THE_ISLAND_COLORS['text_dark']}; line-height: 1.6;">
+                                        Unfortunately, we do not have availability for <strong>{player_count} player(s)</strong> on your requested dates.
+                                    </p>
+    """
+
+    if checked_alternatives:
+        html += f"""
+                                    <p style="margin: 10px 0 0 0; color: {THE_ISLAND_COLORS['text_medium']}; line-height: 1.6;">
+                                        We have checked dates within a week of your request, but were unable to find suitable availability.
+                                    </p>
+        """
+
+    html += """
+                                </div>
+
+                                <div style="background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%); background-color: #f0f9ff; border-left: 4px solid """ + THE_ISLAND_COLORS['navy_primary'] + """; border-radius: 8px; padding: 20px; margin: 30px 0;">
+                                    <h3 style="color: """ + THE_ISLAND_COLORS['navy_primary'] + """; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">
+                                        📞 Please Contact Us
+                                    </h3>
+                                    <p style="margin: 5px 0; color: """ + THE_ISLAND_COLORS['text_dark'] + """;">We would be delighted to assist you in finding alternative dates or discuss other options:</p>
+                                    <p style="margin: 8px 0; color: """ + THE_ISLAND_COLORS['text_dark'] + """;"><strong>Email:</strong> <a href="mailto:""" + CLUB_BOOKING_EMAIL + """" style="color: """ + THE_ISLAND_COLORS['navy_primary'] + """;">""" + CLUB_BOOKING_EMAIL + """</a></p>
+                                    <p style="margin: 8px 0; color: """ + THE_ISLAND_COLORS['text_dark'] + """;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: """ + THE_ISLAND_COLORS['navy_primary'] + """;">+353 1 843 6205</a></p>
+                                </div>
+
+                                <p style="color: """ + THE_ISLAND_COLORS['text_medium'] + """; font-size: 15px; line-height: 1.8; margin: 20px 0 0 0;">
+                                    We look forward to welcoming you to our championship links course.
+                                </p>
+    """
+
+    html += get_email_footer()
+
+    return html
+
+
 def format_confirmation_email(booking_data: Dict) -> str:
     """Generate The Island branded HTML confirmation email"""
 
@@ -1059,23 +1299,66 @@ def inbound_webhook():
             logging.error("   Check DATABASE_URL environment variable")
             logging.error("   Check database connection and schema")
         
-        # Send provisional confirmation email
+        # Send provisional confirmation email with requested times
         logging.info("")
-        logging.info("📧 Sending confirmation email...")
+        logging.info("📧 Preparing confirmation email with requested times...")
         email_sent = False
-        
+
+        # Build results from parsed booking data (not from API - this is self-contained)
+        results = []
+        dates_to_show = []
+
+        if booking_data.get('preferred_date') and booking_data['preferred_date'] != 'TBD':
+            dates_to_show.append(booking_data['preferred_date'])
+
+        if booking_data.get('alternate_date'):
+            dates_to_show.append(booking_data['alternate_date'])
+
+        # Create time slots from parsed time or default common times
+        times_to_show = []
+        if booking_data.get('preferred_time') and booking_data['preferred_time'] != 'TBD':
+            times_to_show.append(booking_data['preferred_time'])
+        else:
+            # Default to common tee times if no specific time requested
+            times_to_show = ['08:00', '10:00', '12:00', '14:00', '16:00']
+
+        # Build results for email template
+        for date in dates_to_show:
+            for time in times_to_show:
+                results.append({
+                    'date': date,
+                    'time': time
+                })
+
         try:
             if not SENDGRID_API_KEY:
                 logging.error("❌ SENDGRID_API_KEY not set!")
                 logging.error("   Cannot send confirmation email")
             else:
-                html_email = format_provisional_email(booking_data)
+                if results:
+                    # We have dates to show - use the fancy availability email
+                    logging.info(f"   Showing {len(results)} time slots for requested dates")
+                    html_email = format_availability_email(
+                        results=results,
+                        player_count=booking_data['num_players'],
+                        guest_email=sender_email,
+                        booking_id=booking_id,
+                        used_alternatives=False,
+                        original_dates=None
+                    )
+                    subject = "Available Tee Times at The Island Golf Club"
+                else:
+                    # No valid dates - send provisional email
+                    logging.info("   No valid dates found - sending provisional confirmation")
+                    html_email = format_provisional_email(booking_data)
+                    subject = "Your Island Golf Club Booking Request"
+
                 email_sent = send_email(
                     sender_email,
-                    "Your Island Golf Club Booking Request",
+                    subject,
                     html_email
                 )
-                
+
                 if email_sent:
                     logging.info("✅ Email: SUCCESS")
                     logging.info(f"   Sent to: {sender_email}")
