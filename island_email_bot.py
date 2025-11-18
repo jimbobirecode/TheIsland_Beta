@@ -1316,59 +1316,20 @@ def inbound_webhook():
             logging.error("   Check DATABASE_URL environment variable")
             logging.error("   Check database connection and schema")
         
-        # Send provisional confirmation email with requested times
+        # Send provisional acknowledgment email for booking request
         logging.info("")
-        logging.info("📧 Preparing confirmation email with requested times...")
+        logging.info("📧 Preparing provisional acknowledgment email...")
         email_sent = False
-
-        # Build results from parsed booking data (not from API - this is self-contained)
-        results = []
-        dates_to_show = []
-
-        if booking_data.get('date') and booking_data['date'] != 'TBD':
-            dates_to_show.append(booking_data['date'])
-
-        if parsed_data.get('alternate_date'):
-            dates_to_show.append(parsed_data['alternate_date'])
-
-        # Create time slots from parsed time or default common times
-        times_to_show = []
-        if booking_data.get('tee_time') and booking_data['tee_time'] != 'TBD':
-            times_to_show.append(booking_data['tee_time'])
-        else:
-            # Default to common tee times if no specific time requested
-            times_to_show = ['08:00', '10:00', '12:00', '14:00', '16:00']
-
-        # Build results for email template
-        for date in dates_to_show:
-            for time in times_to_show:
-                results.append({
-                    'date': date,
-                    'time': time
-                })
 
         try:
             if not SENDGRID_API_KEY:
                 logging.error("❌ SENDGRID_API_KEY not set!")
-                logging.error("   Cannot send confirmation email")
+                logging.error("   Cannot send acknowledgment email")
             else:
-                if results:
-                    # We have dates to show - use the fancy availability email
-                    logging.info(f"   Showing {len(results)} time slots for requested dates")
-                    html_email = format_availability_email(
-                        results=results,
-                        player_count=booking_data['players'],
-                        guest_email=sender_email,
-                        booking_id=booking_id,
-                        used_alternatives=False,
-                        original_dates=None
-                    )
-                    subject = "Available Tee Times at The Island Golf Club"
-                else:
-                    # No valid dates - send provisional email
-                    logging.info("   No valid dates found - sending provisional confirmation")
-                    html_email = format_provisional_email(booking_data)
-                    subject = "Your Island Golf Club Booking Request"
+                # Always send provisional email for initial booking requests
+                logging.info("   Sending provisional booking acknowledgment")
+                html_email = format_provisional_email(booking_data)
+                subject = "Your Island Golf Club Booking Request"
 
                 email_sent = send_email(
                     sender_email,
@@ -1382,7 +1343,7 @@ def inbound_webhook():
                 else:
                     logging.error("❌ Email: FAILED")
                     logging.error("   Check SendGrid API key and configuration")
-                    
+
         except Exception as email_error:
             logging.error(f"❌ Email Error: {email_error}")
             logging.error(f"   Type: {type(email_error).__name__}")
