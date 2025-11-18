@@ -1255,6 +1255,7 @@ def inbound_webhook():
         booking_id = f"ISL-{date_str}-{hash_digest}"
 
         booking_data = {
+            # Database keys
             'booking_id': booking_id,
             'guest_email': sender_email,
             'players': parsed_data.get('num_players', 4),
@@ -1264,7 +1265,16 @@ def inbound_webhook():
             'status': 'provisional',
             'club': 'theisland',
             'club_name': 'The Island Golf Club',
-            'total': parsed_data.get('num_players', 4) * PER_PLAYER_FEE
+            'total': parsed_data.get('num_players', 4) * PER_PLAYER_FEE,
+            # Email template keys (for compatibility with format_provisional_email and format_confirmation_email)
+            'id': booking_id,
+            'name': sender_name,
+            'email': sender_email,
+            'phone': parsed_data.get('phone', 'N/A'),
+            'num_players': parsed_data.get('num_players', 4),
+            'preferred_date': parsed_data.get('preferred_date') or 'TBD',
+            'preferred_time': parsed_data.get('preferred_time') or 'TBD',
+            'alternate_date': parsed_data.get('alternate_date')
         }
 
         logging.info("")
@@ -1298,16 +1308,16 @@ def inbound_webhook():
         results = []
         dates_to_show = []
 
-        if booking_data.get('preferred_date') and booking_data['preferred_date'] != 'TBD':
-            dates_to_show.append(booking_data['preferred_date'])
+        if booking_data.get('date') and booking_data['date'] != 'TBD':
+            dates_to_show.append(booking_data['date'])
 
-        if booking_data.get('alternate_date'):
-            dates_to_show.append(booking_data['alternate_date'])
+        if parsed_data.get('alternate_date'):
+            dates_to_show.append(parsed_data['alternate_date'])
 
         # Create time slots from parsed time or default common times
         times_to_show = []
-        if booking_data.get('preferred_time') and booking_data['preferred_time'] != 'TBD':
-            times_to_show.append(booking_data['preferred_time'])
+        if booking_data.get('tee_time') and booking_data['tee_time'] != 'TBD':
+            times_to_show.append(booking_data['tee_time'])
         else:
             # Default to common tee times if no specific time requested
             times_to_show = ['08:00', '10:00', '12:00', '14:00', '16:00']
@@ -1330,7 +1340,7 @@ def inbound_webhook():
                     logging.info(f"   Showing {len(results)} time slots for requested dates")
                     html_email = format_availability_email(
                         results=results,
-                        player_count=booking_data['num_players'],
+                        player_count=booking_data['players'],
                         guest_email=sender_email,
                         booking_id=booking_id,
                         used_alternatives=False,
