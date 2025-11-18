@@ -510,6 +510,10 @@ def format_provisional_email(booking_data: Dict) -> str:
                                         </tr>
         """
 
+    # URL-encode mailto parameters for proper link handling
+    mailto_subject = quote(f"Re: Booking {booking_id}")
+    mailto_body = quote(f"CONFIRM {booking_id}")
+
     html_content = f"""
 {get_email_header()}
                                 <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['powder_blue']} 0%, #a3b9d9 100%); background-color: {THE_ISLAND_COLORS['powder_blue']}; color: {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(184, 193, 218, 0.4);">
@@ -590,7 +594,7 @@ def format_provisional_email(booking_data: Dict) -> str:
                                     <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
                                         <tr>
                                             <td style="border-radius: 8px; background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);">
-                                                <a href="mailto:{CLUB_BOOKING_EMAIL}?subject=Re: Booking {booking_id}&body=CONFIRM {booking_id}" class="button-link" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff !important; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(36, 56, 143, 0.3);">
+                                                <a href="mailto:{CLUB_BOOKING_EMAIL}?subject={mailto_subject}&body={mailto_body}" class="button-link" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff !important; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(36, 56, 143, 0.3);">
                                                     📧 Confirm Booking Now
                                                 </a>
                                             </td>
@@ -753,26 +757,44 @@ def parse_booking_from_email(text: str, subject: str = "") -> Dict:
             result['alternate_date'] = unique_dates[1]
 
     # --- EXTRACT TIME ---
+    # First check for specific times with context
     time_patterns = [
-        r'(?:time|tee\s*time)[:\s]*(\d{1,2}:\d{2}\s*(?:am|pm)?)',
-        r'(?:time|tee\s*time)[:\s]*(\d{1,2}\s*(?:am|pm))',
-        r'(?:at|around)\s+(\d{1,2}:\d{2}\s*(?:am|pm)?)',
-        r'(?:at|around)\s+(\d{1,2}\s*(?:am|pm))',
-        r'(\d{1,2}:\d{2}\s*(?:am|pm)?)',
-        r'(morning|afternoon|evening)',
+        # Specific times with keywords
+        r'(?:time|tee\s*time)[:\s]+(\d{1,2}:\d{2}\s*(?:am|pm)?)',
+        r'(?:time|tee\s*time)[:\s]+(\d{1,2}\s*(?:am|pm))',
+        r'(?:at|around|about)\s+(\d{1,2}:\d{2}\s*(?:am|pm)?)',
+        r'(?:at|around|about)\s+(\d{1,2}\s*(?:am|pm))',
+        # Standalone times
+        r'\b(\d{1,2}:\d{2}\s*(?:am|pm))\b',
+        r'\b(\d{1,2}\s*(?:am|pm))\b',
+        # General time periods
+        r'\b(morning)\b',
+        r'\b(afternoon)\b',
+        r'\b(evening)\b',
+        r'\b(early|late)\s+(morning|afternoon)\b',
     ]
 
     for pattern in time_patterns:
         match = re.search(pattern, full_text, re.IGNORECASE)
         if match:
-            time_str = match.group(1).strip()
+            time_str = match.group(1).strip().lower()
 
             # Convert general times to specific ranges
-            if time_str in ['morning', 'morning time']:
-                result['preferred_time'] = '9:00 AM'
-            elif time_str in ['afternoon', 'afternoon time']:
-                result['preferred_time'] = '2:00 PM'
-            elif time_str in ['evening', 'evening time']:
+            if 'morning' in time_str:
+                if 'early' in time_str:
+                    result['preferred_time'] = '8:00 AM'
+                elif 'late' in time_str:
+                    result['preferred_time'] = '11:00 AM'
+                else:
+                    result['preferred_time'] = '9:00 AM'
+            elif 'afternoon' in time_str:
+                if 'early' in time_str:
+                    result['preferred_time'] = '1:00 PM'
+                elif 'late' in time_str:
+                    result['preferred_time'] = '4:00 PM'
+                else:
+                    result['preferred_time'] = '2:00 PM'
+            elif 'evening' in time_str:
                 result['preferred_time'] = '5:00 PM'
             else:
                 # Normalize time format
@@ -791,8 +813,15 @@ def parse_booking_from_email(text: str, subject: str = "") -> Dict:
 
                     result['preferred_time'] = time_str.upper()
                 except:
-                    result['preferred_time'] = time_str
+                    result['preferred_time'] = time_str.upper()
             break
+
+    # If no specific time found but "tee times" (plural) mentioned, default to morning preference
+    if not result['preferred_time']:
+        if re.search(r'\b(?:looking for|need|want|requesting|seeking)\s+(?:tee\s*)?times?\b', full_text, re.IGNORECASE):
+            result['preferred_time'] = 'Morning (flexible)'
+        elif re.search(r'\btee\s*times?\b', full_text, re.IGNORECASE):
+            result['preferred_time'] = 'Flexible'
 
     return result
 
