@@ -863,6 +863,106 @@ def format_no_availability_email(player_count: int) -> str:
     return html
 
 
+def format_inquiry_received_email(parsed: Dict, guest_email: str, booking_id: str = None) -> str:
+    """Generate fallback email when API unavailable or no dates provided"""
+    html = get_email_header()
+
+    player_count = parsed.get('players', 4)
+    dates = parsed.get('dates', [])
+
+    html += f"""
+        <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['powder_blue']} 0%, #a3b9d9 100%); color: {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+            <h2 style="margin: 0; font-size: 28px; font-weight: 700;">📧 Inquiry Received</h2>
+        </div>
+
+        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
+            Thank you for your tee time inquiry at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>.
+        </p>
+
+        <div class="info-box">
+            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0;">
+                📋 Your Inquiry Details
+            </h3>
+            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid {THE_ISLAND_COLORS['border_grey']}; border-radius: 8px;">
+    """
+
+    if booking_id:
+        html += f"""
+                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        Inquiry ID
+                    </td>
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        {booking_id}
+                    </td>
+                </tr>
+        """
+
+    if dates:
+        dates_str = ', '.join(dates)
+        html += f"""
+                <tr style="background-color: #ffffff;">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        <strong>📅 Requested Dates</strong>
+                    </td>
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        {dates_str}
+                    </td>
+                </tr>
+        """
+
+    html += f"""
+                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        <strong>👥 Players</strong>
+                    </td>
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        {player_count}
+                    </td>
+                </tr>
+                <tr style="background-color: #fffbeb;">
+                    <td style="padding: 18px 12px; font-weight: 700;">
+                        <strong>💶 Estimated Green Fee</strong>
+                    </td>
+                    <td style="padding: 18px 12px; text-align: right; color: {THE_ISLAND_COLORS['royal_blue']}; font-size: 22px; font-weight: 700;">
+                        €{player_count * PER_PLAYER_FEE:.2f}
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div style="background: #e0f2fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
+            <p style="margin: 0; font-size: 15px; line-height: 1.7;">
+                <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">📞 What Happens Next:</strong>
+            </p>
+            <p style="margin: 10px 0 0 0; font-size: 14px; line-height: 1.7;">
+                Our team has received your inquiry and will check availability for your requested dates. We'll respond within 24 hours with available tee times and booking options.
+            </p>
+        </div>
+
+        <div class="info-box">
+            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
+                📞 Contact Us Directly
+            </h3>
+            <p style="margin: 5px 0;">For immediate assistance, please contact us:</p>
+            <p style="margin: 8px 0;"><strong>Email:</strong> <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {THE_ISLAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a></p>
+            <p style="margin: 8px 0;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: {THE_ISLAND_COLORS['navy_primary']};">+353 1 843 6205</a></p>
+        </div>
+
+        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
+            Thank you for choosing The Island Golf Club.
+        </p>
+
+        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
+            Best regards,<br>
+            <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club Team</strong>
+        </p>
+    """
+
+    html += get_email_footer()
+    return html
+
+
 # ============================================================================
 # EMAIL SENDING FUNCTION
 # ============================================================================
@@ -1234,10 +1334,23 @@ def handle_inbound_email():
                         subject_line = "Tee Time Availability - The Island Golf Club"
                         send_email_sendgrid(sender_email, subject_line, html_email)
                 else:
-                    logging.warning("API returned non-200 status")
+                    logging.warning(f"API returned non-200 status: {response.status_code}")
+                    # Send fallback "we received your inquiry" email
+                    html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
+                    subject_line = "Tee Time Inquiry - The Island Golf Club"
+                    send_email_sendgrid(sender_email, subject_line, html_email)
 
             except requests.RequestException as e:
                 logging.error(f"API error: {e}")
+                # Send fallback "we received your inquiry" email
+                html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
+                subject_line = "Tee Time Inquiry - The Island Golf Club"
+                send_email_sendgrid(sender_email, subject_line, html_email)
+        else:
+            # No dates found - send "please provide dates" email
+            html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
+            subject_line = "Tee Time Inquiry - The Island Golf Club"
+            send_email_sendgrid(sender_email, subject_line, html_email)
 
         return jsonify({'status': 'inquiry_created', 'booking_id': booking_id}), 200
 
