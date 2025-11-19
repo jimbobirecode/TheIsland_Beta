@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """
-TeeMail Email Bot - The Island Golf Club Edition
-================================================
+The Island Golf Club - Email Bot with Inquiry → Requested Flow
+================================================================
 
-Enhanced with The Island branded HTML email templates
+Email Flow:
+1. Customer Inquiry → Database (Status: 'Inquiry' ✅)
+2. Customer Clicks "Book Now" → Database (Status: 'Inquiry' → 'Requested' ✅)
+   Note: "Customer sent booking request on [timestamp]"
+3. Bot Sends Acknowledgment → Database (Status: 'Requested' maintained)
+   Note: "Acknowledgment email sent on [timestamp]"
+4. Customer Replies Again → Database (Status: 'Requested' maintained)
+   Note: "Customer replied again on [timestamp]"
 """
 
 from flask import Flask, request, jsonify
@@ -22,14 +29,12 @@ import uuid
 import hashlib
 import re
 from urllib.parse import quote
-from dateutil import parser as date_parser
-from dateutil.relativedelta import relativedelta
 
 app = Flask(__name__)
 
 # --- CONFIG ---
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-FROM_EMAIL = os.getenv("FROM_EMAIL", "theisland@bookings.teemail.io")
+FROM_EMAIL = os.getenv("FROM_EMAIL", "bookings@theislandgolfclub.ie")
 FROM_NAME = os.getenv("FROM_NAME", "The Island Golf Club")
 PER_PLAYER_FEE = float(os.getenv("PER_PLAYER_FEE", "325.00"))
 BOOKINGS_FILE = os.getenv("BOOKINGS_FILE", "provisional_bookings.jsonl")
@@ -37,10 +42,10 @@ BOOKINGS_FILE = os.getenv("BOOKINGS_FILE", "provisional_bookings.jsonl")
 # PostgreSQL Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Core API endpoint
+# Core API endpoint (for availability checking)
 CORE_API_URL = os.getenv("CORE_API_URL", "http://localhost:5001")
 
-# External Dashboard API endpoint
+# Dashboard API endpoint
 DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://theisland-dashboard.onrender.com")
 
 # Default course for bookings
@@ -49,7 +54,7 @@ DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "theisland")
 # Tracking email for confirmation webhooks
 TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "theisland")
 
-# Club booking email (appears in mailto links for staff copy)
+# Club booking email (appears in mailto links)
 CLUB_BOOKING_EMAIL = os.getenv("CLUB_BOOKING_EMAIL", "bookings@theislandgolfclub.ie")
 
 # --- LOGGING ---
@@ -61,25 +66,11 @@ logging.basicConfig(
 # --- DATABASE CONNECTION POOL ---
 db_pool = None
 
-def get_db_pool():
-    global db_pool
-    if db_pool is None and DATABASE_URL:
-        db_pool = SimpleConnectionPool(1, 10, DATABASE_URL)
-    return db_pool
 
-def get_db_connection():
-    pool = get_db_pool()
-    if pool:
-        return pool.getconn()
-    return None
+# ============================================================================
+# THE ISLAND BRAND COLORS
+# ============================================================================
 
-def release_db_connection(conn):
-    pool = get_db_pool()
-    if pool and conn:
-        pool.putconn(conn)
-
-
-# --- THE ISLAND BRAND COLORS ---
 THE_ISLAND_COLORS = {
     'navy_primary': '#24388f',
     'royal_blue': '#1923c2',
@@ -100,41 +91,396 @@ THE_ISLAND_COLORS = {
 }
 
 
-# --- HTML EMAIL TEMPLATES ---
+# ============================================================================
+# DATABASE FUNCTIONS
+# ============================================================================
+
+def init_db_pool():
+    """Initialize database connection pool"""
+    global db_pool
+    try:
+        if not DATABASE_URL:
+            logging.error("❌ DATABASE_URL not set!")
+            return False
+
+        db_pool = SimpleConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=DATABASE_URL
+        )
+
+        logging.info("✅ Database connection pool created")
+        return True
+    except Exception as e:
+        logging.error(f"❌ Failed to create DB pool: {e}")
+        return False
+
+
+def get_db_connection():
+    """Get a connection from the pool"""
+    if db_pool:
+        return db_pool.getconn()
+    return None
+
+
+def release_db_connection(conn):
+    """Release connection back to pool"""
+    if db_pool and conn:
+        db_pool.putconn(conn)
+
+
+def generate_booking_id(guest_email: str, timestamp: str = None) -> str:
+    """Generate a unique booking ID in format: ISL-YYYYMMDD-XXXX"""
+    if timestamp is None:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    date_str = datetime.now().strftime("%Y%m%d")
+    hash_input = f"{guest_email}{timestamp}".encode('utf-8')
+    hash_digest = hashlib.md5(hash_input).hexdigest()[:8].upper()
+
+    return f"ISL-{date_str}-{hash_digest}"
+
+
+def save_booking_to_db(booking_data: dict):
+    """Save booking to PostgreSQL"""
+    conn = None
+    try:
+        logging.info("💾 SAVING NEW BOOKING TO DATABASE")
+        logging.info(f"   Customer: {booking_data.get('guest_email')}")
+        logging.info(f"   Players: {booking_data.get('players')}")
+        logging.info(f"   Status: {booking_data.get('status')}")
+
+        conn = get_db_connection()
+        if not conn:
+            logging.error("❌ No database connection")
+            return False
+
+        cursor = conn.cursor()
+
+        if 'booking_id' not in booking_data or not booking_data['booking_id']:
+            booking_id = generate_booking_id(
+                booking_data['guest_email'],
+                booking_data['timestamp']
+            )
+            booking_data['booking_id'] = booking_id
+            logging.info(f"   Generated booking_id: {booking_id}")
+        else:
+            booking_id = booking_data['booking_id']
+            logging.info(f"   Using provided booking_id: {booking_id}")
+
+        cursor.execute("""
+            INSERT INTO bookings (
+                booking_id, message_id, timestamp, guest_email, dates, date, tee_time,
+                players, total, status, note,
+                club, club_name
+            ) VALUES (
+                %(booking_id)s, %(message_id)s, %(timestamp)s, %(guest_email)s, %(dates)s, %(date)s, %(tee_time)s,
+                %(players)s, %(total)s, %(status)s, %(note)s,
+                %(club)s, %(club_name)s
+            )
+            ON CONFLICT (booking_id) DO UPDATE SET
+                status = EXCLUDED.status,
+                note = EXCLUDED.note,
+                updated_at = CURRENT_TIMESTAMP
+        """, {
+            'booking_id': booking_id,
+            'message_id': booking_data.get('message_id'),
+            'timestamp': booking_data['timestamp'],
+            'guest_email': booking_data['guest_email'],
+            'dates': Json(booking_data.get('dates', [])),
+            'date': booking_data.get('date'),
+            'tee_time': booking_data.get('tee_time'),
+            'players': booking_data['players'],
+            'total': booking_data['total'],
+            'status': booking_data['status'],
+            'note': booking_data.get('note'),
+            'club': booking_data.get('club'),
+            'club_name': booking_data.get('club_name')
+        })
+
+        rows_affected = cursor.rowcount
+        conn.commit()
+        cursor.close()
+
+        logging.info(f"✅ BOOKING SAVED - ID: {booking_id}")
+        return booking_id
+
+    except Exception as e:
+        logging.error(f"❌ FAILED TO SAVE BOOKING: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+def get_booking_by_id(booking_id: str):
+    """Get a specific booking by booking_id"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return None
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT
+                booking_id as id,
+                timestamp,
+                guest_email,
+                dates,
+                date,
+                tee_time,
+                players,
+                total,
+                status,
+                note,
+                club,
+                club_name,
+                customer_confirmed_at,
+                created_at,
+                updated_at,
+                message_id,
+                confirmation_message_id
+            FROM bookings
+            WHERE booking_id = %s
+        """, (booking_id,))
+
+        booking = cursor.fetchone()
+        cursor.close()
+
+        if booking:
+            booking_dict = dict(booking)
+
+            # Convert datetime objects to strings
+            for field in ['timestamp', 'customer_confirmed_at', 'created_at', 'updated_at']:
+                if booking_dict.get(field) and hasattr(booking_dict[field], 'strftime'):
+                    booking_dict[field] = booking_dict[field].strftime('%Y-%m-%d %H:%M:%S')
+
+            if booking_dict.get('date') and hasattr(booking_dict['date'], 'strftime'):
+                booking_dict['date'] = booking_dict['date'].strftime('%Y-%m-%d')
+
+            return booking_dict
+
+        return None
+
+    except Exception as e:
+        logging.error(f"❌ Failed to fetch booking {booking_id}: {e}")
+        return None
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+def update_booking_in_db(booking_id: str, updates: dict):
+    """Update booking in PostgreSQL"""
+    conn = None
+    try:
+        logging.info("="*60)
+        logging.info(f"💾 DATABASE UPDATE INITIATED")
+        logging.info("="*60)
+        logging.info(f"📋 Booking ID: {booking_id}")
+        logging.info(f"📝 Updates to apply:")
+        for key, value in updates.items():
+            logging.info(f"   • {key}: {value}")
+
+        conn = get_db_connection()
+        if not conn:
+            logging.error("❌ No database connection available")
+            return False
+
+        cursor = conn.cursor()
+
+        set_clauses = []
+        params = {'booking_id': booking_id}
+
+        # Build update query
+        for key, value in updates.items():
+            if key in ['status', 'note', 'players', 'total', 'customer_confirmed_at',
+                      'confirmation_message_id', 'date', 'tee_time']:
+                set_clauses.append(f"{key} = %({key})s")
+                params[key] = value
+
+        if not set_clauses:
+            logging.warning("⚠️  No valid update fields found")
+            cursor.close()
+            release_db_connection(conn)
+            return False
+
+        set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+
+        query = f"""
+            UPDATE bookings
+            SET {', '.join(set_clauses)}
+            WHERE booking_id = %(booking_id)s
+        """
+
+        cursor.execute(query, params)
+        rows_affected = cursor.rowcount
+        conn.commit()
+        cursor.close()
+
+        if rows_affected == 0:
+            logging.error(f"❌ No rows updated! Booking ID may not exist: {booking_id}")
+            release_db_connection(conn)
+            return False
+
+        logging.info(f"✅ Database updated successfully - {rows_affected} row(s) affected")
+        logging.info("="*60)
+        return True
+
+    except Exception as e:
+        logging.error("="*60)
+        logging.error(f"❌ DATABASE UPDATE FAILED")
+        logging.error("="*60)
+        logging.error(f"❌ Error: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+def extract_booking_id(text: str) -> Optional[str]:
+    """Extract booking ID from email text"""
+    pattern = r'ISL-\d{8}-[A-F0-9]{8}'
+    match = re.search(pattern, text, re.IGNORECASE)
+    if match:
+        return match.group(0).upper()
+    return None
+
+
+def extract_message_id(headers: str) -> Optional[str]:
+    """Extract Message-ID from email headers string"""
+    if not headers:
+        return None
+    pattern = r'Message-I[Dd]:\s*<?([^>\s]+)>?'
+    match = re.search(pattern, headers, re.IGNORECASE | re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
+def is_duplicate_message(message_id: str) -> bool:
+    """Check if this message_id has already been processed"""
+    if not message_id:
+        return False
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            logging.warning("⚠️  Cannot check for duplicates - no DB connection")
+            return False
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM bookings
+            WHERE message_id = %s OR confirmation_message_id = %s
+        """, (message_id, message_id))
+
+        count = cursor.fetchone()[0]
+        cursor.close()
+
+        return count > 0
+
+    except Exception as e:
+        logging.error(f"❌ Error checking for duplicate message: {e}")
+        return False
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+def init_database():
+    """Create bookings table if it doesn't exist"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            logging.error("❌ No database connection available")
+            return False
+
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_name = 'bookings'
+            );
+        """)
+        table_exists = cursor.fetchone()[0]
+
+        if not table_exists:
+            logging.info("📋 Creating new bookings table...")
+            cursor.execute("""
+                CREATE TABLE bookings (
+                    id SERIAL PRIMARY KEY,
+                    booking_id VARCHAR(255) UNIQUE NOT NULL,
+                    message_id VARCHAR(500),
+                    confirmation_message_id VARCHAR(500),
+                    timestamp TIMESTAMP NOT NULL,
+                    guest_email VARCHAR(255) NOT NULL,
+                    dates JSONB,
+                    date DATE,
+                    tee_time VARCHAR(10),
+                    players INTEGER NOT NULL,
+                    total DECIMAL(10, 2) NOT NULL,
+                    status VARCHAR(50) NOT NULL DEFAULT 'Inquiry',
+                    note TEXT,
+                    club VARCHAR(100),
+                    club_name VARCHAR(255),
+                    customer_confirmed_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            logging.info("✅ Bookings table created")
+        else:
+            logging.info("📋 Bookings table exists")
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_email ON bookings(guest_email);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_message_id ON bookings(message_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_booking_id ON bookings(booking_id);")
+
+        conn.commit()
+        cursor.close()
+
+        logging.info("✅ Database schema ready")
+        return True
+
+    except Exception as e:
+        logging.error(f"❌ Database initialization error: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+# ============================================================================
+# HTML EMAIL TEMPLATE FUNCTIONS
+# ============================================================================
 
 def get_email_header():
-    """The Island Golf Club branded email header with Outlook compatibility"""
+    """The Island Golf Club branded email header"""
     return f"""
     <!DOCTYPE html>
-    <html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+    <html xmlns="http://www.w3.org/1999/xhtml">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <title>The Island Golf Club - Booking</title>
-
-        <!--[if mso]>
-        <noscript>
-        <xml>
-            <o:OfficeDocumentSettings>
-                <o:AllowPNG/>
-                <o:PixelsPerInch>96</o:PixelsPerInch>
-            </o:OfficeDocumentSettings>
-        </xml>
-        </noscript>
-        <style type="text/css">
-            body, table, td, p, div, span, a {{
-                font-family: Georgia, 'Times New Roman', serif !important;
-            }}
-            table {{
-                border-collapse: collapse !important;
-                mso-table-lspace: 0pt !important;
-                mso-table-rspace: 0pt !important;
-            }}
-        </style>
-        <![endif]-->
-
         <style type="text/css">
             body {{
                 margin: 0 !important;
@@ -143,95 +489,36 @@ def get_email_header():
                 font-family: Georgia, 'Times New Roman', serif;
                 background-color: {THE_ISLAND_COLORS['bg_light']};
             }}
-
-            table {{
-                border-collapse: collapse;
-                mso-table-lspace: 0pt;
-                mso-table-rspace: 0pt;
-            }}
-
-            .email-wrapper {{
-                background-color: {THE_ISLAND_COLORS['bg_light']};
-                padding: 20px;
-            }}
-
             .email-container {{
                 background: #ffffff;
                 border-radius: 12px;
-                overflow: hidden;
+                max-width: 800px;
+                margin: 20px auto;
                 box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             }}
-
             .header {{
                 background: #ffffff;
                 padding: 40px 30px;
                 text-align: center;
-                color: {THE_ISLAND_COLORS['navy_primary']};
-                position: relative;
                 border-bottom: 2px solid {THE_ISLAND_COLORS['border_grey']};
             }}
-
             .header-logo {{
                 max-width: 200px;
                 height: auto;
                 margin: 0 auto 20px auto;
-                display: block;
             }}
-
-            .header h1 {{
-                margin: 0 0 10px 0;
-                font-size: 32px;
-                font-weight: 700;
-                color: {THE_ISLAND_COLORS['navy_primary']};
-                letter-spacing: -0.5px;
-                position: relative;
-                z-index: 1;
-            }}
-
-            .header p {{
-                margin: 0;
-                color: {THE_ISLAND_COLORS['text_medium']};
-                font-size: 16px;
-                font-weight: 600;
-                position: relative;
-                z-index: 1;
-            }}
-
             .content {{
                 padding: 40px 30px;
             }}
-
             .info-box {{
                 background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%);
-                background-color: #f0f9ff;
                 border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']};
                 border-radius: 8px;
                 padding: 20px;
                 margin: 20px 0;
             }}
-
-            .booking-table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin: 25px 0;
-                border-radius: 8px;
-                overflow: hidden;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-                border: 1px solid {THE_ISLAND_COLORS['border_grey']};
-            }}
-
-            .booking-table tr {{
-                border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};
-            }}
-
-            .booking-table td {{
-                padding: 15px 12px;
-                color: {THE_ISLAND_COLORS['text_dark']};
-            }}
-
             .button-link {{
                 background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);
-                background-color: {THE_ISLAND_COLORS['navy_primary']};
                 color: #ffffff !important;
                 padding: 15px 40px;
                 text-decoration: none;
@@ -241,102 +528,76 @@ def get_email_header():
                 display: inline-block;
                 box-shadow: 0 4px 15px rgba(36, 56, 143, 0.3);
             }}
-
+            .tee-table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 25px 0;
+                border-radius: 8px;
+                overflow: hidden;
+                border: 1px solid {THE_ISLAND_COLORS['border_grey']};
+            }}
+            .tee-table thead {{
+                background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);
+                color: #ffffff;
+            }}
+            .tee-table th {{
+                padding: 15px 12px;
+                color: #ffffff;
+                font-weight: 600;
+                text-align: left;
+            }}
+            .tee-table td {{
+                padding: 15px 12px;
+                border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};
+            }}
             .footer {{
                 background: linear-gradient(135deg, {THE_ISLAND_COLORS['gradient_start']} 0%, {THE_ISLAND_COLORS['gradient_end']} 100%);
-                background-color: {THE_ISLAND_COLORS['navy_primary']};
                 padding: 30px;
                 text-align: center;
                 color: #ffffff;
             }}
-
-            .footer strong {{
-                color: {THE_ISLAND_COLORS['gold_accent']};
-                font-size: 18px;
-            }}
-
-            .footer a {{
-                color: {THE_ISLAND_COLORS['gold_accent']};
-                text-decoration: none;
-                font-weight: 600;
-            }}
-
-            @media only screen and (max-width: 600px) {{
-                .header h1 {{ font-size: 24px !important; }}
-                .content {{ padding: 20px 15px !important; }}
-            }}
         </style>
     </head>
-    <body style="margin: 0; padding: 0; background-color: {THE_ISLAND_COLORS['bg_light']};">
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" class="email-wrapper" style="border-collapse: collapse;">
+    <body>
+        <table role="presentation" width="100%" style="background-color: {THE_ISLAND_COLORS['bg_light']};">
             <tr>
-                <td style="padding: 20px; background-color: {THE_ISLAND_COLORS['bg_light']};">
-                    <table role="presentation" class="email-container" align="center" border="0" cellpadding="0" cellspacing="0" width="800" style="max-width: 800px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                <td style="padding: 20px;">
+                    <table class="email-container" align="center" width="800">
                         <tr>
-                            <td class="header" style="background: #ffffff; padding: 40px 30px; text-align: center; color: {THE_ISLAND_COLORS['navy_primary']}; position: relative; border-bottom: 2px solid {THE_ISLAND_COLORS['border_grey']};">
-                                <div>
-                                    <img src="https://raw.githubusercontent.com/jimbobirecode/TeeMail-Assests/main/images.png" alt="VLUB Logo" class="header-logo" style="max-width: 200px; height: auto; margin: 0 auto 20px auto; display: block;" />
-                                    <hr style="border: 0; height: 3px; background-color: {THE_ISLAND_COLORS['royal_blue']}; margin: 20px auto; width: 100%; max-width: 600px;" />
-                                    <p style="margin: 0; color: {THE_ISLAND_COLORS['text_medium']}; font-size: 16px; font-weight: 600;">
-                                        Visitor Tee Time Booking
-                                    </p>
-                                </div>
+                            <td class="header">
+                                <img src="https://raw.githubusercontent.com/jimbobirecode/TeeMail-Assests/main/images.png" alt="The Island Golf Club" class="header-logo" />
+                                <hr style="border: 0; height: 3px; background-color: {THE_ISLAND_COLORS['royal_blue']}; margin: 20px auto; width: 100%;" />
+                                <p style="margin: 0; color: {THE_ISLAND_COLORS['text_medium']}; font-size: 16px; font-weight: 600;">
+                                    Visitor Tee Time Booking
+                                </p>
                             </td>
                         </tr>
                         <tr>
-                            <td class="content" style="padding: 40px 30px;">
+                            <td class="content">
     """
 
+
 def get_email_footer():
-    """The Island Golf Club branded email footer with Outlook compatibility"""
+    """The Island Golf Club branded email footer"""
     return f"""
                             </td>
                         </tr>
                         <tr>
-                            <td class="footer" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['gradient_start']} 0%, {THE_ISLAND_COLORS['gradient_end']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; padding: 30px; text-align: center; color: #ffffff; position: relative;">
-                                <!--[if gte mso 9]>
-                                <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:800px;height:180px;">
-                                <v:fill type="gradient" color="{THE_ISLAND_COLORS['gradient_end']}" color2="{THE_ISLAND_COLORS['gradient_start']}" angle="135" />
-                                <v:textbox inset="30px,30px,30px,30px">
-                                <![endif]-->
-                                <div style="color: #ffffff;">
-                                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
-                                        <tr>
-                                            <td style="padding: 0 0 15px 0; text-align: center;">
-                                                <strong style="color: {THE_ISLAND_COLORS['gold_accent']}; font-size: 18px; letter-spacing: 0.5px;">
-                                                    The Island Golf Club
-                                                </strong>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding: 0 0 10px 0; text-align: center;">
-                                                <p style="margin: 0; color: #ffffff; font-size: 14px; line-height: 1.6;">
-                                                    Corballis, Donabate, Co. Dublin, K36 KH85, Ireland
-                                                </p>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding: 0 0 15px 0; text-align: center;">
-                                                <p style="margin: 0; color: {THE_ISLAND_COLORS['powder_blue']}; font-size: 13px;">
-                                                    <a href="tel:+35318436205" style="color: {THE_ISLAND_COLORS['gold_accent']}; text-decoration: none; font-weight: 600;">📞 +353 1 843 6205</a>
-                                                    <span style="color: {THE_ISLAND_COLORS['powder_blue']}; margin: 0 8px;">|</span>
-                                                    <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {THE_ISLAND_COLORS['gold_accent']}; text-decoration: none; font-weight: 600;">📧 bookings@theislandgolfclub.ie</a>
-                                                </p>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding: 15px 0 0 0; text-align: center; border-top: 1px solid rgba(212, 175, 55, 0.3);">
-                                                <p style="margin: 0; color: {THE_ISLAND_COLORS['powder_blue']}; font-size: 12px; line-height: 1.5;">
-                                                    Championship Links Golf Course
-                                                </p>
-                                            </td>
-                                        </tr>
-                                    </table>
-                                </div>
-                                <!--[if gte mso 9]>
-                                </v:textbox>
-                                </v:rect>
-                                <![endif]-->
+                            <td class="footer">
+                                <strong style="color: {THE_ISLAND_COLORS['gold_accent']}; font-size: 18px;">
+                                    The Island Golf Club
+                                </strong>
+                                <p style="margin: 10px 0; color: #ffffff; font-size: 14px;">
+                                    Corballis, Donabate, Co. Dublin, K36 KH85, Ireland
+                                </p>
+                                <p style="margin: 0; color: {THE_ISLAND_COLORS['powder_blue']}; font-size: 13px;">
+                                    📞 <a href="tel:+35318436205" style="color: {THE_ISLAND_COLORS['gold_accent']}; text-decoration: none;">+353 1 843 6205</a>
+                                    <span style="margin: 0 8px;">|</span>
+                                    📧 <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {THE_ISLAND_COLORS['gold_accent']}; text-decoration: none;">{CLUB_BOOKING_EMAIL}</a>
+                                </p>
+                                <p style="margin-top: 15px; color: {THE_ISLAND_COLORS['powder_blue']}; font-size: 12px;">
+                                    Championship Links Golf Course
+                                </p>
                             </td>
                         </tr>
                     </table>
@@ -347,17 +608,31 @@ def get_email_footer():
     </html>
     """
 
+
+def create_book_button(booking_link: str, button_text: str = "Reserve Now") -> str:
+    """Create HTML for Reserve Now button"""
+    return f"""
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+            <tr>
+                <td style="border-radius: 8px; background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);">
+                    <a href="{booking_link}" style="background: transparent; color: #ffffff !important; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display: inline-block;">
+                        {button_text}
+                    </a>
+                </td>
+            </tr>
+        </table>
+    """
+
+
 def build_booking_link(date: str, time: str, players: int, guest_email: str, booking_id: str = None) -> str:
     """Generate mailto link for Reserve Now button"""
-
     tracking_email = f"{TRACKING_EMAIL_PREFIX}@bookings.teemail.io"
     club_email = CLUB_BOOKING_EMAIL
 
-    # Format booking details
-    subject = quote(f"CONFIRM BOOKING - {date} at {time}")
+    subject = quote(f"BOOKING REQUEST - {date} at {time}")
 
     body_lines = [
-        f"CONFIRM BOOKING",
+        f"BOOKING REQUEST",
         f"",
         f"Booking Details:",
         f"- Date: {date}",
@@ -374,73 +649,28 @@ def build_booking_link(date: str, time: str, players: int, guest_email: str, boo
 
     body = quote("\n".join(body_lines))
 
-    # Create mailto link with both tracking and club email
     mailto_link = f"mailto:{club_email}?cc={tracking_email}&subject={subject}&body={body}"
-
     return mailto_link
 
 
-def create_book_button(booking_link: str, button_text: str = "Reserve Now") -> str:
-    """Create HTML for Reserve Now button"""
-    return f"""
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
-            <tr>
-                <td style="border-radius: 6px; background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);">
-                    <a href="{booking_link}" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff !important; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
-                        {button_text}
-                    </a>
-                </td>
-            </tr>
-        </table>
-    """
-
-
-def format_availability_email(results: list, player_count: int, guest_email: str, booking_id: str = None,
-                             used_alternatives: bool = False, original_dates: list = None) -> str:
-    """Generate The Island Golf Club branded HTML email with available tee times"""
-
+def format_inquiry_email(results: list, player_count: int, guest_email: str, booking_id: str = None) -> str:
+    """Generate inquiry email with available tee times"""
     html = get_email_header()
 
-    # Opening greeting
     html += f"""
-                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
-                                    Thank you for your enquiry. We are delighted to present the following available tee times at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>, one of Ireland's finest championship links courses:
-                                </p>
+        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
+            Thank you for your enquiry. We are delighted to present the following available tee times at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>:
+        </p>
 
-                                <div style="background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%); background-color: #f0f9ff; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; border-radius: 8px; padding: 20px; margin: 25px 0;">
-                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 15px 0; font-weight: 700;">
-                                        👥 Booking Details
-                                    </h3>
-                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Players:</strong> {player_count}</p>
-                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Green Fee:</strong> €{PER_PLAYER_FEE:.0f} per player</p>
-                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Status:</strong> <span style="display: inline-block; padding: 4px 10px; background: #ecfdf5; color: {THE_ISLAND_COLORS['green_success']}; border: 1px solid {THE_ISLAND_COLORS['green_success']}; border-radius: 15px; font-size: 13px; font-weight: 600;">{'✓ Alternative Dates Found' if used_alternatives else '✓ Available Times Found'}</span></p>
-                                </div>
+        <div class="info-box">
+            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 15px 0;">
+                👥 Booking Details
+            </h3>
+            <p style="margin: 5px 0;"><strong>Players:</strong> {player_count}</p>
+            <p style="margin: 5px 0;"><strong>Green Fee:</strong> €{PER_PLAYER_FEE:.0f} per player</p>
+            <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background: #ecfdf5; color: {THE_ISLAND_COLORS['green_success']}; padding: 4px 10px; border-radius: 15px; font-size: 13px;">✓ Available Times Found</span></p>
+        </div>
     """
-
-    # Add alternative dates notice if applicable
-    if used_alternatives and original_dates:
-        original_dates_str = ', '.join(original_dates)
-        plural = 's' if len(original_dates) > 1 else ''
-        were_was = 'were' if len(original_dates) > 1 else 'was'
-
-        html += f"""
-                                <div style="background: linear-gradient(to right, #FFFEF7 0%, #FFF9E6 100%); background-color: #FFFEF7; border: 2px solid {THE_ISLAND_COLORS['gold_accent']}; border-radius: 8px; padding: 20px; margin: 25px 0;">
-                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">
-                                        🎯 Alternative Dates Found!
-                                    </h3>
-                                    <p style="font-size: 15px; margin: 0 0 12px 0; line-height: 1.6; color: {THE_ISLAND_COLORS['text_dark']};">
-                                        Your requested date{plural} <strong style="color: #8B7355;">({original_dates_str})</strong> {were_was} fully booked.
-                                    </p>
-                                    <div style="background: rgba(212, 175, 55, 0.15); padding: 12px; border-radius: 6px; border-left: 3px solid {THE_ISLAND_COLORS['gold_accent']};">
-                                        <p style="margin: 0; font-weight: 600; color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 15px;">
-                                            ✅ Great news! We found available tee times within the same week
-                                        </p>
-                                        <p style="margin: 8px 0 0 0; color: {THE_ISLAND_COLORS['text_medium']}; line-height: 1.6; font-size: 14px;">
-                                            These alternative dates offer the same championship golf experience and are clearly marked below with <strong style="color: {THE_ISLAND_COLORS['gold_accent']};">gold badges</strong>.
-                                        </p>
-                                    </div>
-                                </div>
-        """
 
     # Group results by date
     dates_list = sorted(list(set([r["date"] for r in results])))
@@ -451,1080 +681,564 @@ def format_availability_email(results: list, player_count: int, guest_email: str
         if not date_results:
             continue
 
-        # Check if this is an alternative date
-        is_alt_date = date_results[0].get('is_alternative_date', False)
-
-        # Start alternative date wrapper if needed
-        if is_alt_date:
-            html += f"""
-                                <div style="background: linear-gradient(to right, #FFFEF7 0%, #FFF9E6 100%); background-color: #FFFEF7; border: 2px solid {THE_ISLAND_COLORS['gold_accent']}; padding: 20px; margin: 30px 0; border-radius: 8px;">
-            """
-
-        gold_color = THE_ISLAND_COLORS['gold_accent']
-        date_badge = f'<span style="display: inline-block; padding: 4px 12px; background: #fef3c7; color: #92400e; border: 1px solid {gold_color}; border-radius: 15px; font-size: 13px; font-weight: 600; margin-left: 10px;">📅 Alternative Date</span>' if is_alt_date else ''
-
         html += f"""
-                                <div style="margin: 30px 0;">
-                                    <h2 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 22px; font-weight: 700; margin: 0 0 15px 0; padding-bottom: 10px; border-bottom: 3px solid {THE_ISLAND_COLORS['gold_accent']};">
-                                        🗓️ {date} {date_badge}
-                                    </h2>
-                                    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 20px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); border: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                        <thead>
-                                            <tr style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff;">
-                                                <th style="padding: 15px 12px; color: #ffffff; font-weight: 600; text-align: left; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Tee Time</th>
-                                                <th style="padding: 15px 12px; color: #ffffff; font-weight: 600; text-align: center; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Availability</th>
-                                                <th style="padding: 15px 12px; color: #ffffff; font-weight: 600; text-align: left; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Green Fee</th>
-                                                <th style="padding: 15px 12px; color: #ffffff; font-weight: 600; text-align: center; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Booking</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
+        <div style="margin: 30px 0;">
+            <h2 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 22px; font-weight: 700; margin: 0 0 15px 0; padding-bottom: 10px; border-bottom: 3px solid {THE_ISLAND_COLORS['gold_accent']};">
+                🗓️ {date}
+            </h2>
+            <table class="tee-table">
+                <thead>
+                    <tr>
+                        <th>Tee Time</th>
+                        <th style="text-align: center;">Availability</th>
+                        <th>Green Fee</th>
+                        <th style="text-align: center;">Booking</th>
+                    </tr>
+                </thead>
+                <tbody>
         """
 
-        row_count = 0
         for result in date_results:
             time = result["time"]
-            row_bg = '#f9fafb' if row_count % 2 == 0 else '#ffffff'
-            if is_alt_date:
-                row_bg = '#FFFEF7'
-
             booking_link = build_booking_link(date, time, player_count, guest_email, booking_id)
-            button_html = create_book_button(booking_link, "Reserve Now")
+            button_html = create_book_button(booking_link, "Book Now")
 
             html += f"""
-                                            <tr style="background-color: {row_bg}{'; border-left: 3px solid ' + THE_ISLAND_COLORS['gold_accent'] if is_alt_date else ''};">
-                                                <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};"><strong style="font-size: 16px; color: {THE_ISLAND_COLORS['navy_primary']};">{time}</strong></td>
-                                                <td style="padding: 15px 12px; text-align: center; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};"><span style="display: inline-block; padding: 4px 10px; background: #ecfdf5; color: {THE_ISLAND_COLORS['green_success']}; border: 1px solid {THE_ISLAND_COLORS['green_success']}; border-radius: 15px; font-size: 13px; font-weight: 600;">✓ Available</span></td>
-                                                <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};"><span style="color: {THE_ISLAND_COLORS['royal_blue']}; font-weight: 700; font-size: 15px;">€{PER_PLAYER_FEE:.0f} pp</span></td>
-                                                <td style="padding: 15px 12px; text-align: center; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                    {button_html}
-                                                </td>
-                                            </tr>
+                <tr style="background-color: #f9fafb;">
+                    <td><strong style="font-size: 16px; color: {THE_ISLAND_COLORS['navy_primary']};">{time}</strong></td>
+                    <td style="text-align: center;"><span style="background: #ecfdf5; color: {THE_ISLAND_COLORS['green_success']}; padding: 4px 10px; border-radius: 15px; font-size: 13px;">✓ Available</span></td>
+                    <td><span style="color: {THE_ISLAND_COLORS['royal_blue']}; font-weight: 700;">€{PER_PLAYER_FEE:.0f} pp</span></td>
+                    <td style="text-align: center;">
+                        {button_html}
+                    </td>
+                </tr>
             """
-            row_count += 1
 
         html += """
-                                        </tbody>
-                                    </table>
-                                </div>
+                </tbody>
+            </table>
+        </div>
         """
 
-        # Close alternative date wrapper if needed
-        if is_alt_date:
-            html += "</div>"
-
-    # Add championship links description
     html += f"""
-                                <div style="background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%); background-color: #f0f9ff; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; border-radius: 8px; padding: 20px; margin: 30px 0;">
-                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">
-                                        ⛳ Championship Links Experience
-                                    </h3>
-                                    <p style="margin: 0; color: {THE_ISLAND_COLORS['text_dark']}; line-height: 1.7;">
-                                        The Island Golf Club features a classic links layout offering stunning views and an authentic Irish golfing experience. Our championship course provides golfers with a memorable round of links golf.
-                                    </p>
-                                </div>
-
-                                <div style="background: linear-gradient(to right, #e8f0fe 0%, #dbeafe 100%); background-color: #e8f0fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; border-radius: 8px; padding: 20px; margin: 30px 0;">
-                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">
-                                        💡 How to Confirm Your Booking
-                                    </h3>
-                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Step 1:</strong> Click any "Reserve Now" button above for your preferred tee time</p>
-                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Step 2:</strong> Your email client will open with a pre-filled booking request</p>
-                                    <p style="margin: 5px 0; color: {THE_ISLAND_COLORS['text_dark']};"><strong>Step 3:</strong> Simply send the email - we'll confirm within 30 minutes</p>
-                                    <p style="margin-top: 12px; font-style: italic; color: {THE_ISLAND_COLORS['text_medium']};font-size: 14px;">Alternatively, you may telephone us at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">+353 1 843 6205</strong></p>
-                                </div>
+        <div class="info-box" style="margin-top: 30px;">
+            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
+                💡 How to Book Your Tee Time
+            </h3>
+            <p style="margin: 5px 0;"><strong>Step 1:</strong> Click "Book Now" for your preferred time</p>
+            <p style="margin: 5px 0;"><strong>Step 2:</strong> Your email client will open with booking details</p>
+            <p style="margin: 5px 0;"><strong>Step 3:</strong> Send the email to request your tee time</p>
+            <p style="margin-top: 12px; font-style: italic; font-size: 14px;">Or call us at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">+353 1 843 6205</strong></p>
+        </div>
     """
 
     html += get_email_footer()
-
     return html
 
 
-def format_no_availability_email(player_count: int, original_dates: list = None, checked_alternatives: bool = False) -> str:
-    """Generate HTML email when no availability found"""
+def format_acknowledgment_email(booking_data: Dict) -> str:
+    """Generate acknowledgment email when customer clicks Book Now"""
+    booking_id = booking_data.get('id') or booking_data.get('booking_id', 'N/A')
+    date = booking_data.get('date', 'TBD')
+    time = booking_data.get('tee_time', 'TBD')
+    players = booking_data.get('players', booking_data.get('num_players', 0))
+    total_fee = players * PER_PLAYER_FEE
 
     html = get_email_header()
 
     html += f"""
-                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
-                                    Thank you for your enquiry regarding tee times at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>.
-                                </p>
+        <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['powder_blue']} 0%, #a3b9d9 100%); color: {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+            <h2 style="margin: 0; font-size: 28px; font-weight: 700;">📬 Booking Request Received</h2>
+        </div>
 
-                                <div style="background: linear-gradient(to right, #fef2f2 0%, #fee2e2 100%); background-color: #fef2f2; border-left: 4px solid #dc2626; border-radius: 8px; padding: 20px; margin: 25px 0;">
-                                    <h3 style="color: #dc2626; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">
-                                        ⚠️ No Availability Found
-                                    </h3>
-                                    <p style="margin: 0; color: {THE_ISLAND_COLORS['text_dark']}; line-height: 1.6;">
-                                        Unfortunately, we do not have availability for <strong>{player_count} player(s)</strong> on your requested dates.
-                                    </p>
-    """
+        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
+            Thank you for your booking request at <strong>The Island Golf Club</strong>. We have received your request and will review it shortly.
+        </p>
 
-    if checked_alternatives:
-        html += f"""
-                                    <p style="margin: 10px 0 0 0; color: {THE_ISLAND_COLORS['text_medium']}; line-height: 1.6;">
-                                        We have checked dates within a week of your request, but were unable to find suitable availability.
-                                    </p>
-        """
+        <div class="info-box">
+            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0;">
+                📋 Your Booking Request
+            </h3>
+            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid {THE_ISLAND_COLORS['border_grey']}; border-radius: 8px;">
+                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        Booking ID
+                    </td>
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        {booking_id}
+                    </td>
+                </tr>
+                <tr style="background-color: #ffffff;">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        <strong>📅 Date</strong>
+                    </td>
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        {date}
+                    </td>
+                </tr>
+                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        <strong>🕐 Time</strong>
+                    </td>
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        {time}
+                    </td>
+                </tr>
+                <tr style="background-color: #ffffff;">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        <strong>👥 Players</strong>
+                    </td>
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        {players}
+                    </td>
+                </tr>
+                <tr style="background-color: #fffbeb;">
+                    <td style="padding: 18px 12px; font-weight: 700;">
+                        <strong>💶 Total Fee</strong>
+                    </td>
+                    <td style="padding: 18px 12px; text-align: right; color: {THE_ISLAND_COLORS['green_success']}; font-size: 22px; font-weight: 700;">
+                        €{total_fee:.2f}
+                    </td>
+                </tr>
+            </table>
+        </div>
 
-    html += """
-                                </div>
+        <div style="background: #e0f2fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
+            <p style="margin: 0; font-size: 15px; line-height: 1.7;">
+                <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">📞 Next Steps:</strong>
+            </p>
+            <p style="margin: 10px 0 0 0; font-size: 14px; line-height: 1.7;">
+                Our team is reviewing your request and will confirm availability shortly. You may receive additional communication from us via email or phone.
+            </p>
+        </div>
 
-                                <div style="background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%); background-color: #f0f9ff; border-left: 4px solid """ + THE_ISLAND_COLORS['navy_primary'] + """; border-radius: 8px; padding: 20px; margin: 30px 0;">
-                                    <h3 style="color: """ + THE_ISLAND_COLORS['navy_primary'] + """; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">
-                                        📞 Please Contact Us
-                                    </h3>
-                                    <p style="margin: 5px 0; color: """ + THE_ISLAND_COLORS['text_dark'] + """;">We would be delighted to assist you in finding alternative dates or discuss other options:</p>
-                                    <p style="margin: 8px 0; color: """ + THE_ISLAND_COLORS['text_dark'] + """;"><strong>Email:</strong> <a href="mailto:""" + CLUB_BOOKING_EMAIL + """" style="color: """ + THE_ISLAND_COLORS['navy_primary'] + """;">""" + CLUB_BOOKING_EMAIL + """</a></p>
-                                    <p style="margin: 8px 0; color: """ + THE_ISLAND_COLORS['text_dark'] + """;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: """ + THE_ISLAND_COLORS['navy_primary'] + """;">+353 1 843 6205</a></p>
-                                </div>
+        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
+            Thank you for choosing The Island Golf Club.
+        </p>
 
-                                <p style="color: """ + THE_ISLAND_COLORS['text_medium'] + """; font-size: 15px; line-height: 1.8; margin: 20px 0 0 0;">
-                                    We look forward to welcoming you to our championship links course.
-                                </p>
+        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
+            Best regards,<br>
+            <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club Team</strong>
+        </p>
     """
 
     html += get_email_footer()
-
     return html
 
 
-def format_confirmation_email(booking_data: Dict) -> str:
-    """Generate The Island branded HTML confirmation email"""
+def format_no_availability_email(player_count: int) -> str:
+    """Generate email when no availability found"""
+    html = get_email_header()
 
-    booking_id = booking_data.get('id', 'N/A')
-    player_name = booking_data.get('name', 'N/A')
-    email = booking_data.get('email', 'N/A')
-    phone = booking_data.get('phone', 'N/A')
-    num_players = booking_data.get('num_players', 0)
-    preferred_date = booking_data.get('preferred_date', 'N/A')
-    preferred_time = booking_data.get('preferred_time', 'N/A')
-    total_fee = num_players * PER_PLAYER_FEE
+    html += f"""
+        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
+            Thank you for your enquiry regarding tee times at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>.
+        </p>
 
-    html_content = f"""
-{get_email_header()}
-                                <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['green_success']} 0%, #1e4d2e 100%); background-color: {THE_ISLAND_COLORS['green_success']}; color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(45, 95, 63, 0.3);">
-                                    <h2 style="margin: 0; font-size: 28px; font-weight: 700; color: #ffffff;">✅ Booking Confirmed!</h2>
-                                </div>
+        <div style="background: #fef2f2; border-left: 4px solid #dc2626; border-radius: 8px; padding: 20px; margin: 25px 0;">
+            <h3 style="color: #dc2626; font-size: 18px; margin: 0 0 12px 0;">
+                ⚠️ No Availability Found
+            </h3>
+            <p style="margin: 0;">
+                Unfortunately, we do not have availability for <strong>{player_count} player(s)</strong> on your requested dates.
+            </p>
+        </div>
 
-                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
-                                    Dear <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">{player_name}</strong>,
-                                </p>
+        <div class="info-box">
+            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
+                📞 Please Contact Us
+            </h3>
+            <p style="margin: 5px 0;">We would be delighted to assist you in finding alternative dates:</p>
+            <p style="margin: 8px 0;"><strong>Email:</strong> <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {THE_ISLAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a></p>
+            <p style="margin: 8px 0;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: {THE_ISLAND_COLORS['navy_primary']};">+353 1 843 6205</a></p>
+        </div>
 
-                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 30px 0;">
-                                    We're delighted to confirm your tee time booking at <strong>The Island Golf Club</strong>, one of Ireland's premier championship links courses.
-                                </p>
-
-                                <div class="info-box" style="background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%); background-color: #f0f9ff; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; border-radius: 8px; padding: 25px; margin: 30px 0;">
-                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0; font-weight: 700;">
-                                        📋 Confirmed Booking Details
-                                    </h3>
-
-                                    <table class="booking-table" width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border-radius: 8px; overflow: hidden; border: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                        <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                Booking ID
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {booking_id}
-                                            </td>
-                                        </tr>
-                                        <tr style="background-color: #ffffff;">
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>📅 Date</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {preferred_date}
-                                            </td>
-                                        </tr>
-                                        <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>🕐 Tee Time</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {preferred_time}
-                                            </td>
-                                        </tr>
-                                        <tr style="background-color: #ffffff;">
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>👥 Number of Players</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {num_players}
-                                            </td>
-                                        </tr>
-                                        <tr style="background-color: #fffbeb;">
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; padding: 18px 12px; font-weight: 700;">
-                                                <strong>💶 Total Fee</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['green_success']}; font-size: 22px; font-weight: 700; padding: 18px 12px; text-align: right;">
-                                                €{total_fee:.2f}
-                                            </td>
-                                        </tr>
-                                    </table>
-                                </div>
-
-                                <div style="background: linear-gradient(to right, #e8f0fe 0%, #dbeafe 100%); background-color: #e8f0fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
-                                    <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; margin: 0 0 12px 0; line-height: 1.7;">
-                                        <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">ℹ️ Important Information:</strong>
-                                    </p>
-                                    <ul style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; margin: 0; padding-left: 20px; line-height: 1.8;">
-                                        <li>Please arrive <strong>30 minutes before</strong> your tee time</li>
-                                        <li>Payment is required upon arrival</li>
-                                        <li>We accept all major credit cards and cash</li>
-                                        <li>Please contact us immediately if you need to make changes</li>
-                                    </ul>
-                                </div>
-
-                                <div style="text-align: center; margin: 35px 0;">
-                                    <a href="mailto:{CLUB_BOOKING_EMAIL}" class="button-link" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff !important; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(36, 56, 143, 0.3);">
-                                        📧 Contact Club Office
-                                    </a>
-                                </div>
-
-                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
-                                    We look forward to welcoming you to The Island Golf Club and hope you enjoy your round on our championship links course.
-                                </p>
-
-                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; line-height: 1.6; margin: 20px 0 0 0;">
-                                    Best regards,<br>
-                                    <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club Team</strong>
-                                </p>
-{get_email_footer()}
+        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 20px 0 0 0;">
+            We look forward to welcoming you to our championship links course.
+        </p>
     """
 
-    return html_content
+    html += get_email_footer()
+    return html
 
 
-def format_provisional_email(booking_data: Dict) -> str:
-    """Generate The Island branded provisional booking email with reply-to-confirm workflow"""
+# ============================================================================
+# EMAIL SENDING FUNCTION
+# ============================================================================
 
-    booking_id = booking_data.get('id', 'N/A')
-    player_name = booking_data.get('name', 'N/A')
-    email = booking_data.get('email', 'N/A')
-    phone = booking_data.get('phone', 'N/A')
-    num_players = booking_data.get('num_players', 0)
-    preferred_date = booking_data.get('preferred_date', 'N/A')
-    preferred_time = booking_data.get('preferred_time', 'N/A')
-    alternate_date = booking_data.get('alternate_date')
-    total_fee = num_players * PER_PLAYER_FEE
+def send_email_sendgrid(to_email: str, subject: str, html_body: str) -> bool:
+    """Send email via SendGrid"""
+    try:
+        logging.info(f"📧 Sending email to: {to_email}")
+        logging.info(f"   Subject: {subject}")
 
-    # Build alternate date row if provided (with highlighted styling)
-    alternate_row = ""
-    if alternate_date:
-        alternate_row = f"""
-                                        <tr style="background-color: #fef3c7;">
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>📅 Alternate Date</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {alternate_date}
-                                            </td>
-                                        </tr>
-        """
+        message = Mail(
+            from_email=Email(FROM_EMAIL, FROM_NAME),
+            to_emails=To(to_email),
+            subject=subject,
+            html_content=Content("text/html", html_body)
+        )
 
-    # URL-encode mailto parameters for proper link handling
-    mailto_subject = quote(f"Re: Booking {booking_id}")
-    mailto_body = quote(f"CONFIRM {booking_id}")
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        response = sg.send(message)
 
-    html_content = f"""
-{get_email_header()}
-                                <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['powder_blue']} 0%, #a3b9d9 100%); background-color: {THE_ISLAND_COLORS['powder_blue']}; color: {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(184, 193, 218, 0.4);">
-                                    <h2 style="margin: 0; font-size: 28px; font-weight: 700; color: {THE_ISLAND_COLORS['navy_primary']};">⏳ Booking Request Received</h2>
-                                </div>
+        logging.info(f"✅ Email sent successfully")
+        logging.info(f"   Status code: {response.status_code}")
+        return True
 
-                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
-                                    Dear <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">{player_name}</strong>,
-                                </p>
-
-                                <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 30px 0;">
-                                    Thank you for your tee time request at <strong>The Island Golf Club</strong>. We have received your booking request and are reviewing availability for your preferred date and time.
-                                </p>
-
-                                <div class="info-box" style="background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%); background-color: #f0f9ff; border-left: 4px solid {THE_ISLAND_COLORS['powder_blue']}; border-radius: 8px; padding: 25px; margin: 30px 0;">
-                                    <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0; font-weight: 700;">
-                                        📋 Your Booking Request
-                                    </h3>
-
-                                    <table class="booking-table" width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border-radius: 8px; overflow: hidden; border: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                        <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                Booking ID
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 14px; padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {booking_id}
-                                            </td>
-                                        </tr>
-                                        <tr style="background-color: #ffffff;">
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>📅 Requested Date</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {preferred_date}
-                                            </td>
-                                        </tr>
-                                        {alternate_row}
-                                        <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>🕐 Requested Time</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {preferred_time}
-                                            </td>
-                                        </tr>
-                                        <tr style="background-color: #ffffff;">
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                <strong>👥 Number of Players</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
-                                                {num_players}
-                                            </td>
-                                        </tr>
-                                        <tr style="background-color: #fffbeb;">
-                                            <td style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; padding: 18px 12px; font-weight: 700;">
-                                                <strong>💶 Estimated Fee</strong>
-                                            </td>
-                                            <td style="color: {THE_ISLAND_COLORS['royal_blue']}; font-size: 22px; font-weight: 700; padding: 18px 12px; text-align: right;">
-                                                €{total_fee:.2f}
-                                            </td>
-                                        </tr>
-                                    </table>
-                                </div>
-
-                                <div style="background: linear-gradient(to right, #e0f2fe 0%, #bae6fd 100%); background-color: #e0f2fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
-                                    <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; margin: 0 0 15px 0; line-height: 1.7;">
-                                        <strong style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 17px;">✉️ How to Confirm Your Booking</strong>
-                                    </p>
-                                    <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 15px; margin: 0 0 12px 0; line-height: 1.7;">
-                                        Simply reply to this email with: <strong style="background-color: {THE_ISLAND_COLORS['gold_accent']}; color: {THE_ISLAND_COLORS['navy_primary']}; padding: 4px 8px; border-radius: 4px;">CONFIRM {booking_id}</strong>
-                                    </p>
-                                    <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; margin: 0; line-height: 1.7;">
-                                        Or click the button below to send a pre-filled confirmation email.
-                                    </p>
-                                </div>
-
-                                <div style="text-align: center; margin: 35px 0;">
-                                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
-                                        <tr>
-                                            <td style="border-radius: 8px; background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);">
-                                                <a href="mailto:{CLUB_BOOKING_EMAIL}?subject={mailto_subject}&body={mailto_body}" class="button-link" style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%); background-color: {THE_ISLAND_COLORS['navy_primary']}; color: #ffffff !important; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(36, 56, 143, 0.3);">
-                                                    📧 Confirm Booking Now
-                                                </a>
-                                            </td>
-                                        </tr>
-                                    </table>
-                                </div>
-
-                                <div style="background-color: {THE_ISLAND_COLORS['light_grey']}; border-left: 3px solid {THE_ISLAND_COLORS['gold_accent']}; padding: 15px; border-radius: 6px; margin: 30px 0;">
-                                    <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 13px; margin: 0; line-height: 1.6; font-style: italic;">
-                                        💡 <strong>Need to make changes?</strong> Simply reply to this email with your updated requirements (date, time, or number of players).
-                                    </p>
-                                </div>
-
-                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
-                                    Thank you for choosing The Island Golf Club. We look forward to welcoming you to our championship links course.
-                                </p>
-
-                                <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; line-height: 1.6; margin: 20px 0 0 0;">
-                                    Best regards,<br>
-                                    <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club Team</strong>
-                                </p>
-{get_email_footer()}
-    """
-
-    return html_content
+    except Exception as e:
+        logging.error(f"❌ Failed to send email: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return False
 
 
-# --- EMAIL PARSING FUNCTION ---
+# ============================================================================
+# EMAIL DETECTION FUNCTIONS
+# ============================================================================
 
-def parse_booking_from_email(text: str, subject: str = "") -> Dict:
-    """
-    Parse booking details from email content using intelligent pattern matching.
-    Returns a dictionary with extracted booking information.
-    """
-    full_text = f"{subject}\n{text}".lower()
+def is_booking_request(subject: str, body: str) -> bool:
+    """Detect if this is a booking request (customer clicked Book Now)"""
+    subject_lower = subject.lower() if subject else ""
+    body_lower = body.lower() if body else ""
+
+    # Check for "BOOKING REQUEST" in subject
+    if "booking request" in subject_lower:
+        logging.info("🎯 Detected 'BOOKING REQUEST' in subject")
+        return True
+
+    # Check if it contains a booking ID (means it's a reply/request)
+    has_booking_ref = extract_booking_id(body) or extract_booking_id(subject)
+    booking_keywords = ['booking request', 'book now', 'reserve', 'confirm booking']
+    has_booking_keyword = any(keyword in body_lower or keyword in subject_lower for keyword in booking_keywords)
+
+    if has_booking_ref and has_booking_keyword:
+        logging.info("🎯 Detected booking reference + booking keywords")
+        return True
+
+    return False
+
+
+def is_customer_reply(subject: str, body: str) -> bool:
+    """Detect if this is a customer replying to an acknowledgment"""
+    subject_lower = subject.lower() if subject else ""
+
+    # Check if it's a reply (Re:)
+    if subject_lower.startswith('re:'):
+        logging.info("🎯 Detected 'Re:' in subject (customer reply)")
+        return True
+
+    return False
+
+
+# ============================================================================
+# SIMPLE EMAIL PARSING
+# ============================================================================
+
+def parse_email_simple(subject: str, body: str) -> Dict:
+    """Simple parsing to extract dates, players, etc."""
+    full_text = f"{subject}\n{body}".lower()
     result = {
-        'num_players': None,
-        'preferred_date': None,
-        'preferred_time': None,
-        'phone': None,
-        'alternate_date': None
+        'players': 4,  # default
+        'dates': []
     }
 
-    # --- EXTRACT NUMBER OF PLAYERS ---
+    # Extract number of players
     player_patterns = [
-        r'(\d+)\s*(?:players?|people|persons?|golfers?|guests?)',
+        r'(\d+)\s*(?:players?|people|persons?|golfers?)',
         r'(?:party|group)\s*(?:of|size)?\s*(\d+)',
-        r'(?:foursome|4some)',  # Special case for 4
-        r'(?:twosome|2some)',   # Special case for 2
-        r'(?:threesome|3some)', # Special case for 3
-        r'for\s*(\d+)',
-        r'(\d+)\s*(?:ball|person)'
     ]
 
     for pattern in player_patterns:
         match = re.search(pattern, full_text)
         if match:
-            if 'foursome' in pattern or '4some' in pattern:
-                result['num_players'] = 4
-            elif 'twosome' in pattern or '2some' in pattern:
-                result['num_players'] = 2
-            elif 'threesome' in pattern or '3some' in pattern:
-                result['num_players'] = 3
-            else:
-                try:
-                    num = int(match.group(1))
-                    if 1 <= num <= 4:  # Valid golf group size
-                        result['num_players'] = num
-                except (ValueError, IndexError):
-                    pass
-            if result['num_players']:
-                break
-
-    # Default to 4 if not found
-    if not result['num_players']:
-        result['num_players'] = 4
-
-    # --- EXTRACT PHONE NUMBER ---
-    phone_patterns = [
-        # Pattern with explicit phone keywords (highest priority)
-        r'(?:phone|tel|mobile|cell|contact)\s*:?\s*([+]?[\d\s\-\(\)]{9,})',
-        # International format with country code
-        r'([+]\d{1,4}[\s\-]?\(?\d{1,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{3,4})',
-        # Standard format with separators (hyphens, spaces, or parentheses)
-        r'(\d{3}[\s\-]\d{3,4}[\s\-]\d{4})',
-        r'(\(\d{3}\)[\s\-]?\d{3}[\s\-]?\d{4})',
-    ]
-
-    for pattern in phone_patterns:
-        match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
-        if match:
-            phone = match.group(1).strip()
-            # Clean up phone number - keep only digits, +, (), -, and spaces
-            phone = re.sub(r'[^\d+\(\)\-\s]', '', phone).strip()
-            # Count digits only
-            digit_count = len(re.sub(r'[^\d]', '', phone))
-            # Require at least 10 digits for valid phone (avoid matching booking IDs like 20251118)
-            # Or 7+ digits if it has proper formatting (spaces, hyphens, parentheses)
-            has_formatting = bool(re.search(r'[\s\-\(\)]', phone))
-            if (digit_count >= 10) or (digit_count >= 7 and has_formatting):
-                result['phone'] = phone
-                break
-
-    # --- EXTRACT DATES ---
-    # Common date patterns - ordered from most specific to least specific
-    date_patterns = [
-        # ISO date format (YYYY-MM-DD or YYYY/MM/DD) - most specific, check first
-        r'(?:on|for|date[:\s]*)\s*(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})',
-        r'(?<!\d)(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})(?!\d)',
-        # Dates with keywords
-        r'(?:on|for|date[:\s]*)\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
-        r'(?:on|for|date[:\s]*)\s*(\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{2,4})',
-        r'(?:on|for|date[:\s]*)\s*((?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+\d{2,4})?)',
-        r'(?:on|for|date[:\s]*)\s*(next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))',
-        r'(?:on|for|date[:\s]*)\s*(tomorrow)',
-        # Month name + day (with or without year) - no keyword required
-        r'\b((?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+\d{2,4})?)\b',
-        r'\b(\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+\d{2,4})?)\b',
-        # Numeric dates without keywords
-        r'\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b',
-        # Relative dates
-        r'\b(tomorrow)\b',
-        r'\b(next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b',
-    ]
-
-    dates_found = []
-    for pattern in date_patterns:
-        for match in re.finditer(pattern, full_text, re.IGNORECASE):
-            date_str = match.group(1).strip()
             try:
-                # Try to parse the date
-                parsed_date = None
+                num = int(match.group(1))
+                if 1 <= num <= 20:
+                    result['players'] = num
+                    break
+            except (ValueError, IndexError):
+                pass
 
-                if 'tomorrow' in date_str:
-                    parsed_date = datetime.now() + timedelta(days=1)
-                elif 'next' in date_str:
-                    # Handle "next Friday" etc
-                    days = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
-                           'friday': 4, 'saturday': 5, 'sunday': 6}
-                    for day, offset in days.items():
-                        if day in date_str:
-                            today = datetime.now()
-                            current_day = today.weekday()
-                            days_ahead = (offset - current_day + 7) % 7
-                            if days_ahead == 0:
-                                days_ahead = 7
-                            parsed_date = today + timedelta(days=days_ahead)
-                            break
-                else:
-                    # Check if this is ISO format (YYYY-MM-DD or YYYY/MM/DD)
-                    is_iso_format = re.match(r'^\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}$', date_str)
-
-                    if is_iso_format:
-                        # Parse ISO format with yearfirst=True
-                        parsed_date = date_parser.parse(date_str, yearfirst=True, default=datetime.now().replace(day=1))
-                    else:
-                        # Use dateutil parser for flexible date parsing with dayfirst for European format
-                        parsed_date = date_parser.parse(date_str, fuzzy=True, dayfirst=True, default=datetime.now().replace(day=1))
-
-                    # If no year was specified and date is in the past, assume next year
-                    if parsed_date and not re.search(r'\d{4}', date_str):
-                        if parsed_date.date() < datetime.now().date():
-                            parsed_date = parsed_date.replace(year=parsed_date.year + 1)
-
-                if parsed_date:
-                    # Only accept future dates (or today)
-                    if parsed_date.date() >= datetime.now().date():
-                        dates_found.append(parsed_date.strftime('%Y-%m-%d'))
-            except (ValueError, TypeError):
-                continue
-
-    # Assign first two unique dates found
-    unique_dates = list(dict.fromkeys(dates_found))  # Remove duplicates while preserving order
-    if unique_dates:
-        result['preferred_date'] = unique_dates[0]
-        if len(unique_dates) > 1:
-            result['alternate_date'] = unique_dates[1]
-
-    # --- EXTRACT TIME ---
-    # First check for specific times with context
-    time_patterns = [
-        # Specific times with keywords
-        r'(?:time|tee\s*time)[:\s]+(\d{1,2}:\d{2}\s*(?:am|pm)?)',
-        r'(?:time|tee\s*time)[:\s]+(\d{1,2}\s*(?:am|pm))',
-        r'(?:at|around|about)\s+(\d{1,2}:\d{2}\s*(?:am|pm)?)',
-        r'(?:at|around|about)\s+(\d{1,2}\s*(?:am|pm))',
-        # Standalone times
-        r'\b(\d{1,2}:\d{2}\s*(?:am|pm))\b',
-        r'\b(\d{1,2}\s*(?:am|pm))\b',
-        # General time periods
-        r'\b(morning)\b',
-        r'\b(afternoon)\b',
-        r'\b(evening)\b',
-        r'\b(early|late)\s+(morning|afternoon)\b',
-    ]
-
-    for pattern in time_patterns:
-        match = re.search(pattern, full_text, re.IGNORECASE)
-        if match:
-            time_str = match.group(1).strip().lower()
-
-            # Convert general times to specific ranges
-            if 'morning' in time_str:
-                if 'early' in time_str:
-                    result['preferred_time'] = '8:00 AM'
-                elif 'late' in time_str:
-                    result['preferred_time'] = '11:00 AM'
-                else:
-                    result['preferred_time'] = '9:00 AM'
-            elif 'afternoon' in time_str:
-                if 'early' in time_str:
-                    result['preferred_time'] = '1:00 PM'
-                elif 'late' in time_str:
-                    result['preferred_time'] = '4:00 PM'
-                else:
-                    result['preferred_time'] = '2:00 PM'
-            elif 'evening' in time_str:
-                result['preferred_time'] = '5:00 PM'
-            else:
-                # Normalize time format
-                try:
-                    # Add AM/PM if missing and hour is ambiguous
-                    if not re.search(r'am|pm', time_str, re.IGNORECASE):
-                        hour_match = re.match(r'(\d{1,2})', time_str)
-                        if hour_match:
-                            hour = int(hour_match.group(1))
-                            if hour >= 7 and hour <= 11:
-                                time_str += ' AM'
-                            elif hour >= 12:
-                                time_str += ' PM'
-                            elif hour >= 1 and hour <= 6:
-                                time_str += ' PM'
-
-                    result['preferred_time'] = time_str.upper()
-                except:
-                    result['preferred_time'] = time_str.upper()
-            break
-
-    # If no specific time found but "tee times" (plural) mentioned, default to morning preference
-    if not result['preferred_time']:
-        if re.search(r'\b(?:looking for|need|want|requesting|seeking)\s+(?:tee\s*)?times?\b', full_text, re.IGNORECASE):
-            result['preferred_time'] = 'Morning (flexible)'
-        elif re.search(r'\btee\s*times?\b', full_text, re.IGNORECASE):
-            result['preferred_time'] = 'Flexible'
+    # Extract dates (simplified - look for YYYY-MM-DD format)
+    date_pattern = r'(\d{4}-\d{2}-\d{2})'
+    for match in re.finditer(date_pattern, subject + "\n" + body):
+        date_str = match.group(1)
+        if date_str not in result['dates']:
+            result['dates'].append(date_str)
 
     return result
 
 
-# --- EMAIL SENDING FUNCTION ---
+# ============================================================================
+# WEBHOOK ENDPOINTS
+# ============================================================================
 
-def send_email(to_email: str, subject: str, html_content: str):
-    """Send HTML email via SendGrid"""
-    try:
-        message = Mail(
-            from_email=Email(FROM_EMAIL, FROM_NAME),
-            to_emails=To(to_email),
-            subject=subject,
-            html_content=Content("text/html", html_content)
-        )
-        
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
-        response = sg.send(message)
-        
-        logging.info(f"Email sent to {to_email}: {response.status_code}")
-        return True
-    except Exception as e:
-        logging.error(f"Failed to send email to {to_email}: {e}")
-        return False
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check"""
+    db_status = "connected" if db_pool else "disconnected"
 
+    return jsonify({
+        'status': 'healthy',
+        'service': 'The Island Email Bot - Inquiry → Requested Flow',
+        'database': db_status,
+        'flow': 'Inquiry → Requested'
+    })
 
-# --- DATABASE FUNCTIONS ---
-
-def store_booking_in_db(booking_data: Dict) -> bool:
-    """Store booking in PostgreSQL database using new schema"""
-    conn = get_db_connection()
-    if not conn:
-        logging.warning("No database connection available")
-        return False
-
-    try:
-        with conn.cursor() as cur:
-            # Convert old field names to new schema
-            booking_id = booking_data.get('booking_id') or booking_data.get('id')
-            guest_email = booking_data.get('guest_email') or booking_data.get('email')
-            players = booking_data.get('players') or booking_data.get('num_players', 4)
-            date = booking_data.get('date') or booking_data.get('preferred_date')
-            tee_time = booking_data.get('tee_time') or booking_data.get('preferred_time')
-            note = booking_data.get('note') or booking_data.get('special_requests')
-            total = booking_data.get('total') or (players * PER_PLAYER_FEE)
-
-            cur.execute("""
-                INSERT INTO bookings (
-                    booking_id, timestamp, guest_email, date, tee_time,
-                    players, total, status, note, club, club_name,
-                    message_id
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (booking_id) DO UPDATE SET
-                    status = EXCLUDED.status,
-                    note = EXCLUDED.note,
-                    updated_at = NOW()
-            """, (
-                booking_id,
-                datetime.utcnow(),
-                guest_email,
-                date,
-                tee_time,
-                players,
-                total,
-                booking_data.get('status', 'provisional'),
-                note,
-                'theisland',
-                'The Island Golf Club',
-                booking_data.get('message_id')
-            ))
-        conn.commit()
-        logging.info(f"Stored booking {booking_id} in database")
-        return True
-    except Exception as e:
-        conn.rollback()
-        logging.error(f"Failed to store booking in database: {e}")
-        import traceback
-        logging.error(traceback.format_exc())
-        return False
-    finally:
-        release_db_connection(conn)
-
-
-def update_booking_status(booking_id: str, status: str, notes: str = None) -> bool:
-    """Update booking status in database"""
-    conn = get_db_connection()
-    if not conn:
-        return False
-
-    try:
-        with conn.cursor() as cur:
-            if notes:
-                cur.execute("""
-                    UPDATE bookings
-                    SET status = %s, note = %s, updated_at = NOW()
-                    WHERE booking_id = %s
-                """, (status, notes, booking_id))
-            else:
-                cur.execute("""
-                    UPDATE bookings
-                    SET status = %s, updated_at = NOW()
-                    WHERE booking_id = %s
-                """, (status, booking_id))
-
-            # Set customer_confirmed_at if status is confirmed
-            if status == 'confirmed':
-                cur.execute("""
-                    UPDATE bookings
-                    SET customer_confirmed_at = NOW()
-                    WHERE booking_id = %s AND customer_confirmed_at IS NULL
-                """, (booking_id,))
-        conn.commit()
-        logging.info(f"Updated booking {booking_id} to status: {status}")
-        return True
-    except Exception as e:
-        conn.rollback()
-        logging.error(f"Failed to update booking status: {e}")
-        return False
-    finally:
-        release_db_connection(conn)
-
-
-# --- WEBHOOK ENDPOINTS ---
 
 @app.route('/webhook/inbound', methods=['POST'])
-def inbound_webhook():
-    """Handle incoming emails from Email Relay (bookings.teemail.io)"""
-    request_id = datetime.utcnow().strftime('%Y%m%d-%H%M%S-%f')[:20]
-    
+def handle_inbound_email():
+    """
+    Handle incoming emails with the following flow:
+    1. Customer Inquiry → Database (Status: 'Inquiry')
+    2. Customer Clicks "Book Now" → Database (Status: 'Inquiry' → 'Requested')
+    3. Bot Sends Acknowledgment → Database (Status: 'Requested' maintained)
+    4. Customer Replies Again → Database (Status: 'Requested' maintained)
+    """
     try:
-        logging.info("=" * 80)
-        logging.info(f"📨 WEBHOOK TRIGGERED [{request_id}]")
-        logging.info("=" * 80)
-        
-        # Parse incoming email data
-        data = request.form
-        
-        # Log what we received
-        logging.info(f"📦 Received {len(data)} form fields:")
-        for key in data.keys():
-            value = data.get(key, '')
-            if key in ['text', 'html', 'email']:
-                logging.info(f"   {key}: {len(value)} chars")
-            else:
-                logging.info(f"   {key}: {value[:100]}")
-        
-        # Extract email fields
-        from_email = data.get('from', '')
-        to_email = data.get('to', '')
-        subject = data.get('subject', '')
-        text_body = data.get('text', '')
-        html_body = data.get('html', '')
-        
-        logging.info("")
-        logging.info("📧 Email Details:")
-        logging.info(f"   From: {from_email}")
-        logging.info(f"   To: {to_email}")
-        logging.info(f"   Subject: {subject}")
-        logging.info(f"   Text Body: {len(text_body)} chars")
-        logging.info(f"   HTML Body: {len(html_body)} chars")
-        
-        if text_body:
-            logging.info("")
-            logging.info("📄 Text Body Preview (first 500 chars):")
-            logging.info(text_body[:500])
-        
-        # Validate required fields
-        if not from_email:
-            logging.error("❌ Missing required field: from")
-            return jsonify({
-                'status': 'error',
-                'message': 'Missing from field',
-                'request_id': request_id
-            }), 400
-        
-        if not subject and not text_body:
-            logging.error("❌ Missing both subject and text body")
-            return jsonify({
-                'status': 'error',
-                'message': 'Missing subject and text body',
-                'request_id': request_id
-            }), 400
-        
-        # Extract clean email address
-        sender_email = from_email
-        sender_name = "Visitor"
-        
+        from_email = request.form.get('from', '')
+        subject = request.form.get('subject', '')
+        text_body = request.form.get('text', '')
+        html_body = request.form.get('html', '')
+        headers = request.form.get('headers', '')
+
+        body = text_body if text_body else html_body
+        message_id = extract_message_id(headers)
+
+        logging.info("="*80)
+        logging.info(f"📨 INBOUND WEBHOOK")
+        logging.info(f"From: {from_email}")
+        logging.info(f"Subject: {subject}")
+        logging.info("="*80)
+
+        # Check for duplicate
+        if message_id and is_duplicate_message(message_id):
+            logging.warning(f"⚠️  DUPLICATE - SKIPPING")
+            return jsonify({'status': 'duplicate'}), 200
+
+        # Extract clean email
         if '<' in from_email:
-            # Format: "John Doe <john@example.com>"
-            parts = from_email.split('<')
-            sender_name = parts[0].strip().strip('"')
-            sender_email = parts[1].strip('>')
-            logging.info(f"   Extracted name: {sender_name}")
-            logging.info(f"   Extracted email: {sender_email}")
+            sender_email = from_email.split('<')[1].strip('>')
         else:
-            # Use email username as name
-            sender_name = sender_email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
-            logging.info(f"   Generated name from email: {sender_name}")
-        
-        # Parse booking details from email content
-        logging.info("")
-        logging.info("🔍 Parsing email content for booking details...")
-        parsed_data = parse_booking_from_email(text_body, subject)
+            sender_email = from_email
 
-        logging.info(f"   📊 Parsed Results:")
-        logging.info(f"      Players: {parsed_data.get('num_players', 'Not found')}")
-        logging.info(f"      Date: {parsed_data.get('preferred_date', 'Not found')}")
-        logging.info(f"      Time: {parsed_data.get('preferred_time', 'Not found')}")
-        logging.info(f"      Phone: {parsed_data.get('phone', 'Not found')}")
-        if parsed_data.get('alternate_date'):
-            logging.info(f"      Alternate Date: {parsed_data.get('alternate_date')}")
+        if not sender_email or '@' not in sender_email:
+            return jsonify({'status': 'invalid_email'}), 400
 
-        # Create booking with received data
-        # Generate booking ID in format: ISL-YYYYMMDD-XXXX
-        date_str = datetime.now().strftime("%Y%m%d")
+        if not body or len(body.strip()) < 10:
+            return jsonify({'status': 'empty_body'}), 200
+
+        # Parse basic info
+        parsed = parse_email_simple(subject, body)
+
+        # FLOW DETECTION
+        # ==============
+
+        # Case 1: BOOKING REQUEST (customer clicked "Book Now")
+        if is_booking_request(subject, body):
+            logging.info("📝 DETECTED: BOOKING REQUEST (Customer clicked Book Now)")
+
+            # Extract booking ID from email
+            booking_id = extract_booking_id(subject) or extract_booking_id(body)
+
+            if booking_id:
+                # Update existing booking to "Requested"
+                logging.info(f"   Updating booking {booking_id} to 'Requested'")
+
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                updates = {
+                    'status': 'Requested',
+                    'note': f"Customer sent booking request on {timestamp}",
+                    'confirmation_message_id': message_id
+                }
+
+                # Extract date and time if present
+                date_match = re.search(r'(\d{4}-\d{2}-\d{2})', subject + body)
+                time_match = re.search(r'(\d{1,2}:\d{2})', subject + body)
+
+                if date_match:
+                    updates['date'] = date_match.group(1)
+                if time_match:
+                    updates['tee_time'] = time_match.group(1)
+
+                update_booking_in_db(booking_id, updates)
+
+                # Send ACKNOWLEDGMENT email
+                logging.info("   Sending acknowledgment email...")
+                booking_data = get_booking_by_id(booking_id)
+                if booking_data:
+                    html_email = format_acknowledgment_email(booking_data)
+                    subject_line = "Your Booking Request - The Island Golf Club"
+                    send_email_sendgrid(sender_email, subject_line, html_email)
+
+                    # Update note to reflect acknowledgment sent
+                    ack_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    update_booking_in_db(booking_id, {
+                        'note': f"Customer sent booking request on {timestamp}\nAcknowledgment email sent on {ack_timestamp}"
+                    })
+
+                return jsonify({'status': 'requested', 'booking_id': booking_id}), 200
+            else:
+                logging.warning("   Booking request but no booking ID found")
+                return jsonify({'status': 'no_booking_id'}), 200
+
+        # Case 2: CUSTOMER REPLY (replying to acknowledgment)
+        elif is_customer_reply(subject, body):
+            logging.info("💬 DETECTED: CUSTOMER REPLY")
+
+            booking_id = extract_booking_id(subject) or extract_booking_id(body)
+
+            if booking_id:
+                logging.info(f"   Updating notes for booking {booking_id}")
+
+                booking = get_booking_by_id(booking_id)
+                if booking and booking.get('status') == 'Requested':
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    existing_note = booking.get('note', '')
+                    new_note = f"{existing_note}\nCustomer replied again on {timestamp}"
+
+                    update_booking_in_db(booking_id, {
+                        'note': new_note
+                    })
+
+                    return jsonify({'status': 'reply_received', 'booking_id': booking_id}), 200
+
+            logging.info("   Reply but no matching booking found - treating as new inquiry")
+
+        # Case 3: NEW INQUIRY (default)
+        logging.info("📧 DETECTED: NEW INQUIRY")
+
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        hash_input = f"{sender_email}{timestamp}".encode('utf-8')
-        hash_digest = hashlib.md5(hash_input).hexdigest()[:4].upper()
-        booking_id = f"ISL-{date_str}-{hash_digest}"
 
-        booking_data = {
-            # Database keys
-            'booking_id': booking_id,
-            'guest_email': sender_email,
-            'players': parsed_data.get('num_players', 4),
-            'date': parsed_data.get('preferred_date') or 'TBD',
-            'tee_time': parsed_data.get('preferred_time') or 'TBD',
-            'note': text_body[:500] if text_body else subject,
-            'status': 'provisional',
-            'club': 'theisland',
-            'club_name': 'The Island Golf Club',
-            'total': parsed_data.get('num_players', 4) * PER_PLAYER_FEE,
-            # Email template keys (for compatibility with format_provisional_email and format_confirmation_email)
-            'id': booking_id,
-            'name': sender_name,
-            'email': sender_email,
-            'phone': parsed_data.get('phone', 'N/A'),
-            'num_players': parsed_data.get('num_players', 4),
-            'preferred_date': parsed_data.get('preferred_date') or 'TBD',
-            'preferred_time': parsed_data.get('preferred_time') or 'TBD',
-            'alternate_date': parsed_data.get('alternate_date')
+        # Create new booking with status 'Inquiry'
+        booking_id = generate_booking_id(sender_email, timestamp)
+
+        new_entry = {
+            "booking_id": booking_id,
+            "timestamp": timestamp,
+            "guest_email": sender_email,
+            "message_id": message_id,
+            "dates": parsed['dates'],
+            "date": parsed['dates'][0] if parsed['dates'] else None,
+            "tee_time": None,
+            "players": parsed['players'],
+            "total": PER_PLAYER_FEE * parsed['players'],
+            "status": "Inquiry",  # ← KEY: Initial status is "Inquiry"
+            "note": "Initial inquiry received",
+            "club": DEFAULT_COURSE_ID,
+            "club_name": FROM_NAME
         }
 
-        logging.info("")
-        logging.info(f"📋 Creating Booking:")
-        logging.info(f"   Booking ID: {booking_id}")
-        logging.info(f"   Name: {sender_name}")
-        logging.info(f"   Email: {sender_email}")
-        logging.info(f"   Players: {booking_data['players']}")
-        logging.info(f"   Date: {booking_data['date']}")
-        logging.info(f"   Tee Time: {booking_data['tee_time']}")
-        logging.info(f"   Total: ${booking_data['total']:.2f}")
-        
-        # Store in database
-        logging.info("")
-        logging.info("💾 Storing in database...")
-        db_stored = store_booking_in_db(booking_data)
-        
-        if db_stored:
-            logging.info("✅ Database: SUCCESS")
-        else:
-            logging.error("❌ Database: FAILED")
-            logging.error("   Check DATABASE_URL environment variable")
-            logging.error("   Check database connection and schema")
-        
-        # Check availability and send email with available times
-        logging.info("")
-        logging.info("📧 Checking availability and preparing time offers...")
-        email_sent = False
+        save_booking_to_db(new_entry)
 
-        # Build list of dates to check
-        dates_to_check = []
-        if booking_data.get('date') and booking_data['date'] != 'TBD':
-            dates_to_check.append(booking_data['date'])
-        if parsed_data.get('alternate_date'):
-            dates_to_check.append(parsed_data['alternate_date'])
+        # Check availability and send inquiry email with time offers
+        if parsed['dates']:
+            try:
+                response = requests.post(
+                    f"{CORE_API_URL}/api/availability/check",
+                    json={
+                        'course_id': DEFAULT_COURSE_ID,
+                        'dates': parsed['dates'],
+                        'players': parsed['players']
+                    },
+                    timeout=10
+                )
 
-        try:
-            if not SENDGRID_API_KEY:
-                logging.error("❌ SENDGRID_API_KEY not set!")
-                logging.error("   Cannot send email")
-            elif not dates_to_check:
-                # No valid dates - send provisional email
-                logging.info("   No valid dates - sending provisional acknowledgment")
-                html_email = format_provisional_email(booking_data)
-                subject = "Your Island Golf Club Booking Request"
-                email_sent = send_email(sender_email, subject, html_email)
-            else:
-                # Check availability for requested dates
-                logging.info(f"   Checking availability for {len(dates_to_check)} date(s)")
+                if response.status_code == 200:
+                    api_data = response.json()
+                    results = api_data.get('results', [])
 
-                # Call Core API to check availability
-                try:
-                    response = requests.post(
-                        f"{CORE_API_URL}/api/availability/check",
-                        json={
-                            'course_id': DEFAULT_COURSE_ID,
-                            'dates': dates_to_check,
-                            'players': booking_data['players']
-                        },
-                        timeout=10
-                    )
-
-                    if response.status_code == 200:
-                        api_data = response.json()
-                        results = api_data.get('results', [])
-
-                        if results:
-                            # We have available times - send availability email
-                            logging.info(f"   Found {len(results)} available time slots")
-                            html_email = format_availability_email(
-                                results=results,
-                                player_count=booking_data['players'],
-                                guest_email=sender_email,
-                                booking_id=booking_id,
-                                used_alternatives=False,
-                                original_dates=None
-                            )
-                            subject = "Available Tee Times at The Island Golf Club"
-                            email_sent = send_email(sender_email, subject, html_email)
-                        else:
-                            # No availability - send no availability email
-                            logging.info("   No availability found")
-                            html_email = format_no_availability_email(
-                                player_count=booking_data['players'],
-                                original_dates=dates_to_check,
-                                checked_alternatives=False
-                            )
-                            subject = "Tee Time Availability - The Island Golf Club"
-                            email_sent = send_email(sender_email, subject, html_email)
+                    if results:
+                        # Send inquiry email with available times
+                        html_email = format_inquiry_email(results, parsed['players'], sender_email, booking_id)
+                        subject_line = "Available Tee Times at The Island Golf Club"
+                        send_email_sendgrid(sender_email, subject_line, html_email)
                     else:
-                        # API error - send provisional email
-                        logging.warning(f"   API returned {response.status_code} - sending provisional")
-                        html_email = format_provisional_email(booking_data)
-                        subject = "Your Island Golf Club Booking Request"
-                        email_sent = send_email(sender_email, subject, html_email)
-
-                except requests.RequestException as api_error:
-                    # API unavailable - send provisional email
-                    logging.warning(f"   API unavailable: {api_error} - sending provisional")
-                    html_email = format_provisional_email(booking_data)
-                    subject = "Your Island Golf Club Booking Request"
-                    email_sent = send_email(sender_email, subject, html_email)
-
-                if email_sent:
-                    logging.info("✅ Email: SUCCESS")
-                    logging.info(f"   Sent to: {sender_email}")
+                        # No availability
+                        html_email = format_no_availability_email(parsed['players'])
+                        subject_line = "Tee Time Availability - The Island Golf Club"
+                        send_email_sendgrid(sender_email, subject_line, html_email)
                 else:
-                    logging.error("❌ Email: FAILED")
+                    logging.warning("API returned non-200 status")
 
-        except Exception as email_error:
-            logging.error(f"❌ Email Error: {email_error}")
-            logging.error(f"   Type: {type(email_error).__name__}")
-            import traceback
-            logging.error(f"   Traceback: {traceback.format_exc()}")
-        
-        logging.info("")
-        logging.info("=" * 80)
-        logging.info(f"✅ WEBHOOK COMPLETE [{request_id}]")
-        logging.info(f"   Booking ID: {booking_id}")
-        logging.info(f"   Database: {'✅' if db_stored else '❌'}")
-        logging.info(f"   Email: {'✅' if email_sent else '❌'}")
-        logging.info("=" * 80)
-        
-        return jsonify({
-            'status': 'success',
-            'booking_id': booking_id,
-            'database_stored': db_stored,
-            'email_sent': email_sent,
-            'from': sender_email,
-            'subject': subject,
-            'request_id': request_id
-        }), 200
-        
+            except requests.RequestException as e:
+                logging.error(f"API error: {e}")
+
+        return jsonify({'status': 'inquiry_created', 'booking_id': booking_id}), 200
+
     except Exception as e:
-        logging.error("=" * 80)
-        logging.error(f"❌ WEBHOOK ERROR [{request_id}]")
-        logging.error("=" * 80)
-        logging.error(f"   Error Type: {type(e).__name__}")
-        logging.error(f"   Error Message: {str(e)}")
-        
-        import traceback
-        logging.error("")
-        logging.error("📋 Full Traceback:")
-        logging.error(traceback.format_exc())
-        logging.error("=" * 80)
-        
-        return jsonify({
-            'status': 'error',
-            'message': str(e),
-            'error_type': type(e).__name__,
-            'request_id': request_id
-        }), 500
-
-
-@app.route('/webhook/events', methods=['POST'])
-def event_webhook():
-    """Handle email events (opens, clicks, etc.)"""
-    try:
-        events = request.json
-        for event in events:
-            event_type = event.get('event')
-            email = event.get('email')
-            logging.info(f"Email event: {event_type} for {email}")
-        
-        return jsonify({'status': 'success'}), 200
-    except Exception as e:
-        logging.error(f"Error processing event: {e}")
-        return jsonify({'status': 'error'}), 500
-
-
-@app.route('/api/confirm/<booking_id>', methods=['POST'])
-def confirm_booking(booking_id):
-    """Confirm a booking and send confirmation email"""
-    try:
-        # Get booking from database
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'status': 'error', 'message': 'Database unavailable'}), 500
-        
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM bookings WHERE booking_id = %s", (booking_id,))
-                booking = cur.fetchone()
-
-            if not booking:
-                return jsonify({'status': 'error', 'message': 'Booking not found'}), 404
-
-            # Update status
-            update_booking_status(booking_id, 'confirmed')
-
-            # Send confirmation email
-            html_email = format_confirmation_email(dict(booking))
-            send_email(booking['guest_email'], "✅ Your Island Golf Club Booking is Confirmed!", html_email)
-            
-            return jsonify({'status': 'success', 'booking_id': booking_id}), 200
-            
-        finally:
-            release_db_connection(conn)
-            
-    except Exception as e:
-        logging.error(f"Error confirming booking: {e}")
+        logging.exception(f"❌ ERROR:")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @app.route('/api/bookings', methods=['GET'])
-def get_bookings():
-    """Get all bookings"""
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'status': 'error', 'message': 'Database unavailable'}), 500
-    
+def api_get_bookings():
+    """API endpoint for dashboard to read bookings"""
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
-                SELECT * FROM bookings
-                WHERE club = %s
-                ORDER BY created_at DESC
-            """, ('theisland',))
-            bookings = cur.fetchall()
-        
-        return jsonify({'status': 'success', 'bookings': bookings}), 200
-    finally:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'No database connection'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT * FROM bookings
+            WHERE club = %s
+            ORDER BY timestamp DESC
+        """, (DEFAULT_COURSE_ID,))
+
+        bookings = cursor.fetchall()
+        cursor.close()
         release_db_connection(conn)
 
+        return jsonify({
+            'success': True,
+            'bookings': [dict(b) for b in bookings],
+            'count': len(bookings)
+        })
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'service': 'The Island Email Bot',
-        'timestamp': datetime.utcnow().isoformat()
-    }), 200
+    except Exception as e:
+        logging.error(f"❌ Error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/bookings/<booking_id>', methods=['PUT'])
+def api_update_booking(booking_id):
+    """API endpoint for dashboard updates"""
+    try:
+        data = request.json
+
+        if update_booking_in_db(booking_id, data):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False}), 500
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# INITIALIZE
+# ============================================================================
+logging.info("="*80)
+logging.info("🌐 The Island Golf Club - Email Bot")
+logging.info("="*80)
+logging.info("📧 Email Flow: Inquiry → Requested")
+logging.info("✅ Step 1: Customer Inquiry → Status: 'Inquiry'")
+logging.info("✅ Step 2: Customer Clicks 'Book Now' → Status: 'Requested'")
+logging.info("✅ Step 3: Bot Sends Acknowledgment → Status: 'Requested' (maintained)")
+logging.info("✅ Step 4: Customer Replies → Status: 'Requested' (maintained)")
+logging.info("="*80)
+
+if init_db_pool():
+    init_database()
+    logging.info("✅ Database ready")
+
+logging.info(f"📧 SendGrid: {FROM_EMAIL}")
+logging.info(f"📬 Club Booking Email: {CLUB_BOOKING_EMAIL}")
+logging.info(f"📮 Tracking Email: {TRACKING_EMAIL_PREFIX}@bookings.teemail.io")
+logging.info(f"🔗 Core API: {CORE_API_URL}")
+logging.info("="*80)
 
 
 if __name__ == '__main__':
