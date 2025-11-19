@@ -1310,13 +1310,13 @@ def handle_inbound_email():
         if parsed['dates']:
             try:
                 response = requests.post(
-                    f"{CORE_API_URL}/api/availability/check",
+                    f"{CORE_API_URL}/check_availability",
                     json={
                         'course_id': DEFAULT_COURSE_ID,
                         'dates': parsed['dates'],
                         'players': parsed['players']
                     },
-                    timeout=10
+                    timeout=120
                 )
 
                 if response.status_code == 200:
