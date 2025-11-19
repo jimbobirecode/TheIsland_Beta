@@ -2628,21 +2628,14 @@ def handle_inbound_email():
         
         booking_id = log_provisional_booking(from_email, parsed, dates, message_id)
 
-        # Send provisional acknowledgment email (NO availability checking)
-        # Manual confirmation will be handled separately
-        subject_line = "Your Booking Request Received - County Louth Golf Club"
-        html_body = format_provisional_acknowledgment_email(
-            course_name="County Louth Golf Club",
-            booking_id=booking_id,
-            player_count=parsed.player_count,
-            requested_dates=dates,
-            guest_email=from_email,
-            from_email=FROM_EMAIL
-        )
+        # Check availability with alternatives and send email with time offers
+        api_response = check_availability_with_alternatives(DEFAULT_COURSE_ID, dates, parsed.player_count, parsed)
 
-        # SEND THE ACKNOWLEDGMENT EMAIL!
+        # Format and send email (includes alternative date info with visual marking)
+        subject_line, html_body = format_availability_response(parsed, api_response, from_email, booking_id, message_id)
+
+        # SEND THE EMAIL!
         send_email_sendgrid(from_email, subject_line, html_body)
-        logging.info(f"✅ Sent provisional acknowledgment email (no availability check)")
         
         return jsonify({'status': 'success', 'booking_id': booking_id}), 200
             

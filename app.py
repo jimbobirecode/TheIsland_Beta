@@ -4,7 +4,7 @@ Entry point for The Island Golf Club Email Bot
 This file imports the Flask app for Gunicorn
 """
 
-from island_email_bot import app
+from email_bot_webhook import app
 
 if __name__ == '__main__':
     import os
