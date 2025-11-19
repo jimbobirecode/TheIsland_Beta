@@ -44,7 +44,7 @@ BOOKINGS_FILE = os.getenv("BOOKINGS_FILE", "provisional_bookings.jsonl")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Core API endpoint (for availability checking)
-CORE_API_URL = os.getenv("CORE_API_URL", "http://localhost:5001")
+CORE_API_URL = os.getenv("CORE_API_URL", "https://core-new-aku3.onrender.com")
 
 # Dashboard API endpoint
 DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://theisland-dashboard.onrender.com")
