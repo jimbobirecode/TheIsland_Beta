@@ -626,14 +626,13 @@ def create_book_button(booking_link: str, button_text: str = "Reserve Now") -> s
 
 
 def build_booking_link(date: str, time: str, players: int, guest_email: str, booking_id: str = None) -> str:
-    """Generate mailto link for Reserve Now button"""
+    """Generate mailto link for Book Now button - sends to bot for processing"""
     tracking_email = f"{TRACKING_EMAIL_PREFIX}@bookings.teemail.io"
-    club_email = CLUB_BOOKING_EMAIL
 
     subject = quote(f"BOOKING REQUEST - {date} at {time}")
 
     body_lines = [
-        f"BOOKING REQUEST",
+        f"I would like to book the following tee time:",
         f"",
         f"Booking Details:",
         f"- Date: {date}",
@@ -650,7 +649,8 @@ def build_booking_link(date: str, time: str, players: int, guest_email: str, boo
 
     body = quote("\n".join(body_lines))
 
-    mailto_link = f"mailto:{club_email}?cc={tracking_email}&subject={subject}&body={body}"
+    # Email goes ONLY to the bot tracking email for processing
+    mailto_link = f"mailto:{tracking_email}?subject={subject}&body={body}"
     return mailto_link
 
 
@@ -806,10 +806,10 @@ def format_acknowledgment_email(booking_data: Dict) -> str:
 
         <div style="background: #e0f2fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
             <p style="margin: 0; font-size: 15px; line-height: 1.7;">
-                <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">📞 Next Steps:</strong>
+                <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">✅ Request Received</strong>
             </p>
             <p style="margin: 10px 0 0 0; font-size: 14px; line-height: 1.7;">
-                Our team is reviewing your request and will confirm availability shortly. You may receive additional communication from us via email or phone.
+                We have received your booking request and our team will be in touch shortly to confirm your tee time. We'll contact you via email or phone within 24 hours.
             </p>
         </div>
 
