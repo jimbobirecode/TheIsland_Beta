@@ -19,6 +19,7 @@ import json
 import os
 import requests
 from datetime import datetime, timedelta
+from dateutil import parser as date_parser
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Email, To, Content
 import psycopg2
@@ -936,7 +937,7 @@ def is_customer_reply(subject: str, body: str) -> bool:
 # ============================================================================
 
 def parse_email_simple(subject: str, body: str) -> Dict:
-    """Simple parsing to extract dates, players, etc."""
+    """Enhanced parsing to extract dates, players, etc. with flexible date formats"""
     full_text = f"{subject}\n{body}".lower()
     result = {
         'players': 4,  # default
@@ -947,25 +948,98 @@ def parse_email_simple(subject: str, body: str) -> Dict:
     player_patterns = [
         r'(\d+)\s*(?:players?|people|persons?|golfers?)',
         r'(?:party|group)\s*(?:of|size)?\s*(\d+)',
+        r'(?:foursome|4some)',  # Special case for 4
+        r'(?:twosome|2some)',   # Special case for 2
+        r'(?:threesome|3some)', # Special case for 3
     ]
 
     for pattern in player_patterns:
         match = re.search(pattern, full_text)
         if match:
-            try:
-                num = int(match.group(1))
-                if 1 <= num <= 20:
-                    result['players'] = num
-                    break
-            except (ValueError, IndexError):
-                pass
+            if 'foursome' in pattern or '4some' in pattern:
+                result['players'] = 4
+            elif 'twosome' in pattern or '2some' in pattern:
+                result['players'] = 2
+            elif 'threesome' in pattern or '3some' in pattern:
+                result['players'] = 3
+            else:
+                try:
+                    num = int(match.group(1))
+                    if 1 <= num <= 20:
+                        result['players'] = num
+                except (ValueError, IndexError):
+                    pass
+            if result['players']:
+                break
 
-    # Extract dates (simplified - look for YYYY-MM-DD format)
-    date_pattern = r'(\d{4}-\d{2}-\d{2})'
-    for match in re.finditer(date_pattern, subject + "\n" + body):
-        date_str = match.group(1)
-        if date_str not in result['dates']:
-            result['dates'].append(date_str)
+    # Enhanced date extraction - multiple formats
+    date_patterns = [
+        # ISO date format (YYYY-MM-DD or YYYY/MM/DD)
+        r'(?:on|for|date[:\s]*)\s*(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})',
+        r'(?<!\d)(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})(?!\d)',
+        # Dates with keywords
+        r'(?:on|for|date[:\s]*)\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
+        # Month name + day
+        r'(?:on|for|date[:\s]*)\s*(\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{2,4})',
+        r'(?:on|for|date[:\s]*)\s*((?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+\d{2,4})?)',
+        # Month name without keyword
+        r'\b((?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+\d{2,4})?)\b',
+        r'\b(\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+\d{2,4})?)\b',
+        # Numeric dates without keywords
+        r'\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b',
+        # Relative dates
+        r'\b(tomorrow)\b',
+        r'\b(next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b',
+    ]
+
+    dates_found = []
+    for pattern in date_patterns:
+        for match in re.finditer(pattern, full_text, re.IGNORECASE):
+            date_str = match.group(1).strip()
+            try:
+                parsed_date = None
+
+                if 'tomorrow' in date_str.lower():
+                    parsed_date = datetime.now() + timedelta(days=1)
+                elif 'next' in date_str.lower():
+                    # Handle "next Friday" etc
+                    days = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+                           'friday': 4, 'saturday': 5, 'sunday': 6}
+                    for day, offset in days.items():
+                        if day in date_str.lower():
+                            today = datetime.now()
+                            current_day = today.weekday()
+                            days_ahead = (offset - current_day + 7) % 7
+                            if days_ahead == 0:
+                                days_ahead = 7
+                            parsed_date = today + timedelta(days=days_ahead)
+                            break
+                else:
+                    # Check if this is ISO format (YYYY-MM-DD or YYYY/MM/DD)
+                    is_iso_format = re.match(r'^\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}$', date_str)
+
+                    if is_iso_format:
+                        # Parse ISO format with yearfirst=True
+                        parsed_date = date_parser.parse(date_str, yearfirst=True, default=datetime.now().replace(day=1))
+                    else:
+                        # Use dateutil parser for flexible date parsing with dayfirst for European format
+                        parsed_date = date_parser.parse(date_str, fuzzy=True, dayfirst=True, default=datetime.now().replace(day=1))
+
+                    # If no year was specified and date is in the past, assume next year
+                    if parsed_date and not re.search(r'\d{4}', date_str):
+                        if parsed_date.date() < datetime.now().date():
+                            parsed_date = parsed_date.replace(year=parsed_date.year + 1)
+
+                if parsed_date:
+                    # Only accept future dates (or today)
+                    if parsed_date.date() >= datetime.now().date():
+                        formatted_date = parsed_date.strftime('%Y-%m-%d')
+                        if formatted_date not in dates_found:
+                            dates_found.append(formatted_date)
+            except (ValueError, TypeError):
+                continue
+
+    result['dates'] = dates_found
 
     return result
 
