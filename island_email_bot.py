@@ -423,6 +423,90 @@ def is_duplicate_message(message_id: str) -> bool:
             release_db_connection(conn)
 
 
+def was_acknowledgment_sent(booking_id: str) -> bool:
+    """Check if acknowledgment email was already sent for this booking"""
+    booking = get_booking_by_id(booking_id)
+    if not booking:
+        return False
+
+    note = booking.get('note', '')
+    status = booking.get('status', '')
+
+    # Check if status is already 'Requested' or beyond AND acknowledgment was sent
+    if status in ['Requested', 'Confirmed']:
+        if 'Acknowledgment email sent' in note or 'acknowledgment email sent' in note.lower():
+            return True
+
+    return False
+
+
+def was_confirmation_sent(booking_id: str) -> bool:
+    """Check if confirmation email was already sent for this booking"""
+    booking = get_booking_by_id(booking_id)
+    if not booking:
+        return False
+
+    note = booking.get('note', '')
+    status = booking.get('status', '')
+
+    # Check if status is 'Confirmed' AND confirmation email was sent
+    if status == 'Confirmed':
+        if 'Confirmation email sent' in note or 'confirmation email sent' in note.lower():
+            return True
+
+    return False
+
+
+def was_inquiry_email_sent_recently(guest_email: str, dates: list, hours: int = 1) -> Optional[str]:
+    """
+    Check if we sent an inquiry email to this customer for similar dates recently
+    Returns booking_id if found, None otherwise
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return None
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Look for bookings from same email created within last N hours
+        cursor.execute("""
+            SELECT booking_id, dates, note, created_at
+            FROM bookings
+            WHERE guest_email = %s
+            AND status = 'Inquiry'
+            AND created_at >= NOW() - INTERVAL '%s hours'
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, (guest_email, hours))
+
+        result = cursor.fetchone()
+        cursor.close()
+
+        if result:
+            # Check if dates are similar
+            existing_dates = result.get('dates', [])
+            note = result.get('note', '')
+
+            # If dates match or are very similar, consider it a duplicate
+            if existing_dates and dates:
+                # Simple check: if any date matches
+                for date in dates:
+                    if date in existing_dates:
+                        logging.info(f"   Found recent inquiry for same email and date: {result['booking_id']}")
+                        return result['booking_id']
+
+        return None
+
+    except Exception as e:
+        logging.error(f"❌ Error checking for recent inquiry: {e}")
+        return None
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
 def init_database():
     """Create bookings table if it doesn't exist"""
     conn = None
@@ -1406,17 +1490,21 @@ def handle_inbound_email():
                     customer_email = booking.get('customer_email')
 
                     if customer_email:
-                        # Send CONFIRMATION email with payment details
-                        logging.info("   Sending confirmation email with payment details...")
-                        html_email = format_confirmation_email(booking)
-                        subject_line = "Booking Confirmed - The Island Golf Club"
-                        send_email_sendgrid(customer_email, subject_line, html_email)
+                        # Check if confirmation email was already sent (prevent duplicates)
+                        if was_confirmation_sent(booking_id):
+                            logging.warning(f"   ⚠️  Confirmation email already sent for {booking_id} - skipping duplicate")
+                        else:
+                            # Send CONFIRMATION email with payment details
+                            logging.info("   Sending confirmation email with payment details...")
+                            html_email = format_confirmation_email(booking)
+                            subject_line = "Booking Confirmed - The Island Golf Club"
+                            send_email_sendgrid(customer_email, subject_line, html_email)
 
-                        # Update note to reflect confirmation email sent
-                        conf_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        update_booking_in_db(booking_id, {
-                            'note': f"{new_note}\nConfirmation email sent on {conf_timestamp}"
-                        })
+                            # Update note to reflect confirmation email sent
+                            conf_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            update_booking_in_db(booking_id, {
+                                'note': f"{new_note}\nConfirmation email sent on {conf_timestamp}"
+                            })
 
                     return jsonify({'status': 'confirmed', 'booking_id': booking_id}), 200
                 else:
@@ -1456,19 +1544,23 @@ def handle_inbound_email():
 
                 update_booking_in_db(booking_id, updates)
 
-                # Send ACKNOWLEDGMENT email
-                logging.info("   Sending acknowledgment email...")
-                booking_data = get_booking_by_id(booking_id)
-                if booking_data:
-                    html_email = format_acknowledgment_email(booking_data)
-                    subject_line = "Your Booking Request - The Island Golf Club"
-                    send_email_sendgrid(sender_email, subject_line, html_email)
+                # Check if acknowledgment email was already sent (prevent duplicates)
+                if was_acknowledgment_sent(booking_id):
+                    logging.warning(f"   ⚠️  Acknowledgment email already sent for {booking_id} - skipping duplicate")
+                else:
+                    # Send ACKNOWLEDGMENT email
+                    logging.info("   Sending acknowledgment email...")
+                    booking_data = get_booking_by_id(booking_id)
+                    if booking_data:
+                        html_email = format_acknowledgment_email(booking_data)
+                        subject_line = "Your Booking Request - The Island Golf Club"
+                        send_email_sendgrid(sender_email, subject_line, html_email)
 
-                    # Update note to reflect acknowledgment sent
-                    ack_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    update_booking_in_db(booking_id, {
-                        'note': f"Customer sent booking request on {timestamp}\nAcknowledgment email sent on {ack_timestamp}"
-                    })
+                        # Update note to reflect acknowledgment sent
+                        ack_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        update_booking_in_db(booking_id, {
+                            'note': f"Customer sent booking request on {timestamp}\nAcknowledgment email sent on {ack_timestamp}"
+                        })
 
                 return jsonify({'status': 'requested', 'booking_id': booking_id}), 200
             else:
@@ -1500,6 +1592,12 @@ def handle_inbound_email():
 
         # Case 3: NEW INQUIRY (default)
         logging.info("📧 DETECTED: NEW INQUIRY")
+
+        # Check if we already sent an inquiry response recently for same dates (prevent duplicates)
+        existing_booking_id = was_inquiry_email_sent_recently(sender_email, parsed['dates'], hours=1)
+        if existing_booking_id:
+            logging.warning(f"   ⚠️  Similar inquiry email already sent recently ({existing_booking_id}) - skipping duplicate")
+            return jsonify({'status': 'duplicate_inquiry', 'existing_booking_id': existing_booking_id}), 200
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
