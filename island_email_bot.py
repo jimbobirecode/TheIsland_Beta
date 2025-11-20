@@ -1,16 +1,39 @@
 #!/usr/bin/env python3
 """
-The Island Golf Club - Email Bot with Inquiry → Requested Flow
-================================================================
+The Island Golf Club - Email Bot with Clear Customer Journey
+=============================================================
 
-Email Flow:
-1. Customer Inquiry → Database (Status: 'Inquiry' ✅)
-2. Customer Clicks "Book Now" → Database (Status: 'Inquiry' → 'Requested' ✅)
-   Note: "Customer sent booking request on [timestamp]"
-3. Bot Sends Acknowledgment → Database (Status: 'Requested' maintained)
-   Note: "Acknowledgment email sent on [timestamp]"
-4. Customer Replies Again → Database (Status: 'Requested' maintained)
-   Note: "Customer replied again on [timestamp]"
+CUSTOMER JOURNEY - CLEAR TERMINOLOGY
+=====================================
+
+Stage 1: Inquiry
+----------------
+- Customer sends initial email asking about availability
+- Status: 'Inquiry'
+- Email shows: "Status: Inquiry - Awaiting Your Request"
+- System sends available tee times with "Book Now" buttons
+
+Stage 2: Request
+----------------
+- Customer clicks "Book Now" button
+- Customer REQUESTS a booking via mailto link
+- Status: 'Inquiry' → 'Requested'
+- Acknowledgment: "Booking Request Received"
+- System sends acknowledgment email
+- Note: "Customer sent booking request on [timestamp]"
+
+Stage 3: Confirmation (Manual by Team)
+---------------------------------------
+- Booking team reviews and CONFIRMS the booking
+- Status: 'Requested' → 'Confirmed'
+- Team sends confirmation with payment details
+- Email shows: "✅ Booking Confirmed"
+- Includes payment instructions and important information
+- Note: "Booking confirmed by team on [timestamp]"
+
+Additional Flow:
+- Customer Replies to Acknowledgment → Status maintained as 'Requested'
+  Note: "Customer replied again on [timestamp]"
 """
 
 from flask import Flask, request, jsonify
@@ -669,7 +692,7 @@ def format_inquiry_email(results: list, player_count: int, guest_email: str, boo
             </h3>
             <p style="margin: 5px 0;"><strong>Players:</strong> {player_count}</p>
             <p style="margin: 5px 0;"><strong>Green Fee:</strong> €{PER_PLAYER_FEE:.0f} per player</p>
-            <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background: #ecfdf5; color: {THE_ISLAND_COLORS['green_success']}; padding: 4px 10px; border-radius: 15px; font-size: 13px;">✓ Available Times Found</span></p>
+            <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background: #e0f2fe; color: {THE_ISLAND_COLORS['navy_primary']}; padding: 4px 10px; border-radius: 15px; font-size: 13px;">Inquiry - Awaiting Your Request</span></p>
         </div>
     """
 
@@ -816,6 +839,119 @@ def format_acknowledgment_email(booking_data: Dict) -> str:
         <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
             Thank you for choosing The Island Golf Club.
         </p>
+
+        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
+            Best regards,<br>
+            <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club Team</strong>
+        </p>
+    """
+
+    html += get_email_footer()
+    return html
+
+
+def format_confirmation_email(booking_data: Dict) -> str:
+    """Generate confirmation email when booking team confirms the booking (Stage 3)"""
+    booking_id = booking_data.get('id') or booking_data.get('booking_id', 'N/A')
+    date = booking_data.get('date', 'TBD')
+    time = booking_data.get('tee_time', 'TBD')
+    players = booking_data.get('players', booking_data.get('num_players', 0))
+    total_fee = players * PER_PLAYER_FEE
+
+    html = get_email_header()
+
+    html += f"""
+        <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['green_success']} 0%, #1f4d31 100%); color: {THE_ISLAND_COLORS['white']}; padding: 25px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+            <h2 style="margin: 0; font-size: 28px; font-weight: 700;">✅ Booking Confirmed</h2>
+        </div>
+
+        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
+            Congratulations! Your booking at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong> has been confirmed.
+        </p>
+
+        <div class="info-box" style="border: 2px solid {THE_ISLAND_COLORS['green_success']};">
+            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0;">
+                📋 Confirmed Booking Details
+            </h3>
+            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid {THE_ISLAND_COLORS['border_grey']}; border-radius: 8px;">
+                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        Booking ID
+                    </td>
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        {booking_id}
+                    </td>
+                </tr>
+                <tr style="background-color: #ffffff;">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        <strong>📅 Date</strong>
+                    </td>
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; color: {THE_ISLAND_COLORS['navy_primary']}; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        {date}
+                    </td>
+                </tr>
+                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        <strong>🕐 Tee Time</strong>
+                    </td>
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; color: {THE_ISLAND_COLORS['navy_primary']}; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        {time}
+                    </td>
+                </tr>
+                <tr style="background-color: #ffffff;">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        <strong>👥 Number of Players</strong>
+                    </td>
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                        {players}
+                    </td>
+                </tr>
+                <tr style="background-color: #fffbeb; border: 2px solid {THE_ISLAND_COLORS['gold_accent']};">
+                    <td style="padding: 18px 12px; font-weight: 700;">
+                        <strong style="font-size: 16px;">💶 Total Amount Due</strong>
+                    </td>
+                    <td style="padding: 18px 12px; text-align: right; color: {THE_ISLAND_COLORS['green_success']}; font-size: 24px; font-weight: 700;">
+                        €{total_fee:.2f}
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div style="background: linear-gradient(to right, #fffbeb 0%, #fef3c7 100%); border-left: 4px solid {THE_ISLAND_COLORS['gold_accent']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
+            <h3 style="margin: 0 0 15px 0; color: {THE_ISLAND_COLORS['navy_primary']};"><strong>💳 Payment Details</strong></h3>
+            <p style="margin: 0 0 10px 0; font-size: 15px; line-height: 1.7;">
+                <strong>Payment Method:</strong> Bank Transfer or Card Payment
+            </p>
+            <p style="margin: 0 0 10px 0; font-size: 15px; line-height: 1.7;">
+                <strong>When:</strong> Payment is required to secure your booking
+            </p>
+            <p style="margin: 0 0 10px 0; font-size: 15px; line-height: 1.7;">
+                <strong>Bank Details:</strong> Please contact us for bank transfer details
+            </p>
+            <p style="margin: 10px 0 0 0; font-size: 14px; color: {THE_ISLAND_COLORS['text_medium']}; font-style: italic;">
+                💡 For card payment or bank transfer details, please reply to this email or call us at <strong>+353 1 843 6205</strong>
+            </p>
+        </div>
+
+        <div style="background: #e0f2fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
+            <h3 style="margin: 0 0 10px 0; color: {THE_ISLAND_COLORS['navy_primary']};">📍 Important Information</h3>
+            <ul style="margin: 10px 0 0 0; padding-left: 20px; font-size: 14px; line-height: 1.8;">
+                <li>Please arrive <strong>30 minutes before</strong> your tee time</li>
+                <li>Please bring proof of handicap (if applicable)</li>
+                <li>Cancellations must be made at least 48 hours in advance</li>
+                <li>Weather permitting - we'll contact you if conditions are unsuitable</li>
+            </ul>
+        </div>
+
+        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 30px 0;">
+            We look forward to welcoming you to our championship links course. If you have any questions, please don't hesitate to contact us.
+        </p>
+
+        <div style="text-align: center; margin: 30px 0; padding: 20px; background-color: {THE_ISLAND_COLORS['light_grey']}; border-radius: 8px;">
+            <p style="margin: 0 0 10px 0; color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px;">Contact Us</p>
+            <p style="margin: 5px 0;"><strong style="color: {THE_ISLAND_COLORS['navy_primary']};">📧 Email:</strong> {FROM_EMAIL}</p>
+            <p style="margin: 5px 0;"><strong style="color: {THE_ISLAND_COLORS['navy_primary']};">📞 Phone:</strong> +353 1 843 6205</p>
+        </div>
 
         <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
             Best regards,<br>
@@ -1032,6 +1168,26 @@ def is_customer_reply(subject: str, body: str) -> bool:
     return False
 
 
+def is_staff_confirmation(subject: str, body: str, from_email: str) -> bool:
+    """Detect if this is a staff member manually confirming a booking (Stage 3)"""
+    subject_lower = subject.lower() if subject else ""
+    body_lower = body.lower() if body else ""
+
+    # Check if email is from staff domain (bookings@theislandgolfclub.ie or similar)
+    # For now, we'll detect based on keywords since staff will manually trigger this
+    confirmation_keywords = ['confirm booking', 'confirmed', 'approve booking', 'booking confirmed']
+
+    # Check for CONFIRM keyword and booking ID
+    has_confirm = any(keyword in subject_lower or keyword in body_lower for keyword in confirmation_keywords)
+    has_booking_ref = extract_booking_id(body) or extract_booking_id(subject)
+
+    if has_confirm and has_booking_ref:
+        logging.info("🎯 Detected staff confirmation request")
+        return True
+
+    return False
+
+
 # ============================================================================
 # SIMPLE EMAIL PARSING
 # ============================================================================
@@ -1164,11 +1320,22 @@ def health():
 @app.route('/webhook/inbound', methods=['POST'])
 def handle_inbound_email():
     """
-    Handle incoming emails with the following flow:
-    1. Customer Inquiry → Database (Status: 'Inquiry')
-    2. Customer Clicks "Book Now" → Database (Status: 'Inquiry' → 'Requested')
-    3. Bot Sends Acknowledgment → Database (Status: 'Requested' maintained)
-    4. Customer Replies Again → Database (Status: 'Requested' maintained)
+    Handle incoming emails with the three-stage customer journey:
+
+    Stage 1 - Inquiry:
+        Customer sends initial email → Status: 'Inquiry'
+        System responds with available times and "Book Now" buttons
+
+    Stage 2 - Request:
+        Customer clicks "Book Now" → Status: 'Inquiry' → 'Requested'
+        System sends acknowledgment: "Booking Request Received"
+
+    Stage 3 - Confirmation:
+        Staff manually confirms booking → Status: 'Requested' → 'Confirmed'
+        System sends confirmation with payment details
+
+    Additional:
+        Customer replies to acknowledgment → Status maintained as 'Requested'
     """
     try:
         from_email = request.form.get('from', '')
@@ -1209,8 +1376,59 @@ def handle_inbound_email():
         # FLOW DETECTION
         # ==============
 
+        # Case 0: STAFF CONFIRMATION (manual confirmation by booking team - Stage 3)
+        if is_staff_confirmation(subject, body, sender_email):
+            logging.info("✅ DETECTED: STAFF CONFIRMATION (Manual confirmation by team)")
+
+            # Extract booking ID from email
+            booking_id = extract_booking_id(subject) or extract_booking_id(body)
+
+            if booking_id:
+                # Get existing booking to check status
+                booking = get_booking_by_id(booking_id)
+
+                if booking and booking.get('status') == 'Requested':
+                    # Update booking to "Confirmed"
+                    logging.info(f"   Updating booking {booking_id} to 'Confirmed'")
+
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    existing_note = booking.get('note', '')
+                    new_note = f"{existing_note}\nBooking confirmed by team on {timestamp}"
+
+                    updates = {
+                        'status': 'Confirmed',
+                        'note': new_note
+                    }
+
+                    update_booking_in_db(booking_id, updates)
+
+                    # Get customer email from booking
+                    customer_email = booking.get('customer_email')
+
+                    if customer_email:
+                        # Send CONFIRMATION email with payment details
+                        logging.info("   Sending confirmation email with payment details...")
+                        html_email = format_confirmation_email(booking)
+                        subject_line = "Booking Confirmed - The Island Golf Club"
+                        send_email_sendgrid(customer_email, subject_line, html_email)
+
+                        # Update note to reflect confirmation email sent
+                        conf_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        update_booking_in_db(booking_id, {
+                            'note': f"{new_note}\nConfirmation email sent on {conf_timestamp}"
+                        })
+
+                    return jsonify({'status': 'confirmed', 'booking_id': booking_id}), 200
+                else:
+                    status = booking.get('status') if booking else 'not found'
+                    logging.warning(f"   Booking {booking_id} cannot be confirmed (current status: {status})")
+                    return jsonify({'status': 'invalid_status', 'current_status': status}), 200
+            else:
+                logging.warning("   Confirmation request but no booking ID found")
+                return jsonify({'status': 'no_booking_id'}), 200
+
         # Case 1: BOOKING REQUEST (customer clicked "Book Now")
-        if is_booking_request(subject, body):
+        elif is_booking_request(subject, body):
             logging.info("📝 DETECTED: BOOKING REQUEST (Customer clicked Book Now)")
 
             # Extract booking ID from email
