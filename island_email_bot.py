@@ -53,6 +53,8 @@ import uuid
 import hashlib
 import re
 from urllib.parse import quote
+from threading import Thread
+import time
 
 app = Flask(__name__)
 
@@ -1215,6 +1217,204 @@ def send_email_sendgrid(to_email: str, subject: str, html_body: str) -> bool:
 
 
 # ============================================================================
+# BACKGROUND PROCESSING FUNCTIONS
+# ============================================================================
+
+def process_staff_confirmation_async(booking_id: str, booking: Dict):
+    """
+    Process staff confirmation in background thread - sends confirmation email
+    This runs AFTER we've already returned 200 to the webhook
+    """
+    try:
+        logging.info(f"🔄 Background processing started for staff confirmation {booking_id}")
+
+        customer_email = booking.get('guest_email')
+
+        if customer_email:
+            if not was_confirmation_sent(booking_id):
+                # Send confirmation email with payment details
+                logging.info(f"   Sending confirmation email to {customer_email}...")
+                html_email = format_confirmation_email(booking)
+                subject_line = "Booking Confirmed - The Island Golf Club"
+                send_email_sendgrid(customer_email, subject_line, html_email)
+
+                # Update note to reflect confirmation email sent
+                conf_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                existing_note = booking.get('note', '')
+                update_booking_in_db(booking_id, {
+                    'note': f"{existing_note}\nConfirmation email sent on {conf_timestamp}"
+                })
+
+                logging.info(f"✅ Confirmation email sent successfully for {booking_id}")
+            else:
+                logging.warning(f"   ⚠️  Confirmation email already sent for {booking_id} - skipping")
+        else:
+            logging.warning(f"   ⚠️  No customer email found for {booking_id}")
+
+        logging.info(f"✅ Background processing completed for staff confirmation {booking_id}")
+
+    except Exception as e:
+        logging.error(f"❌ Background processing error for staff confirmation {booking_id}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+
+        try:
+            existing_note = booking.get('note', '')
+            update_booking_in_db(booking_id, {
+                'note': f"{existing_note}\nError sending confirmation email: {str(e)}"
+            })
+        except:
+            pass
+
+
+def process_booking_request_async(booking_id: str, sender_email: str, timestamp: str):
+    """
+    Process booking request in background thread - sends acknowledgment email
+    This runs AFTER we've already returned 200 to the webhook
+    """
+    try:
+        logging.info(f"🔄 Background processing started for booking request {booking_id}")
+
+        if not was_acknowledgment_sent(booking_id):
+            # Get fresh booking data
+            booking_data = get_booking_by_id(booking_id)
+
+            if booking_data:
+                # Send acknowledgment email
+                logging.info(f"   Sending acknowledgment email to {sender_email}...")
+                html_email = format_acknowledgment_email(booking_data)
+                subject_line = "Your Booking Request - The Island Golf Club"
+                send_email_sendgrid(sender_email, subject_line, html_email)
+
+                # Update note to reflect acknowledgment sent
+                ack_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                update_booking_in_db(booking_id, {
+                    'note': f"Customer sent booking request on {timestamp}\nAcknowledgment email sent on {ack_timestamp}"
+                })
+
+                logging.info(f"✅ Acknowledgment email sent successfully for {booking_id}")
+            else:
+                logging.error(f"   ❌ Could not retrieve booking data for {booking_id}")
+        else:
+            logging.warning(f"   ⚠️  Acknowledgment email already sent for {booking_id} - skipping")
+
+        logging.info(f"✅ Background processing completed for booking request {booking_id}")
+
+    except Exception as e:
+        logging.error(f"❌ Background processing error for booking request {booking_id}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+
+        try:
+            existing_note = f"Customer sent booking request on {timestamp}"
+            update_booking_in_db(booking_id, {
+                'note': f"{existing_note}\nError sending acknowledgment email: {str(e)}"
+            })
+        except:
+            pass
+
+
+def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, dates: list, players: int):
+    """
+    Process inquiry in background thread - checks availability and sends email
+    This runs AFTER we've already returned 200 to the webhook
+    """
+    try:
+        logging.info(f"🔄 Background processing started for booking {booking_id}")
+
+        if dates:
+            try:
+                # Make the API call (can take up to 120 seconds)
+                response = requests.post(
+                    f"{CORE_API_URL}/check_availability",
+                    json={
+                        'course_id': DEFAULT_COURSE_ID,
+                        'dates': dates,
+                        'players': players
+                    },
+                    timeout=120
+                )
+
+                if response.status_code == 200:
+                    api_data = response.json()
+                    results = api_data.get('results', [])
+
+                    if results:
+                        # Send inquiry email with available times
+                        logging.info(f"   ✅ Found {len(results)} available times")
+                        html_email = format_inquiry_email(results, players, sender_email, booking_id)
+                        subject_line = "Available Tee Times at The Island Golf Club"
+                        send_email_sendgrid(sender_email, subject_line, html_email)
+
+                        # Update status
+                        update_booking_in_db(booking_id, {
+                            'status': 'Inquiry',
+                            'note': 'Initial inquiry received. Available times sent.'
+                        })
+                    else:
+                        # No availability
+                        logging.info(f"   ⚠️  No availability found")
+                        html_email = format_no_availability_email(players)
+                        subject_line = "Tee Time Availability - The Island Golf Club"
+                        send_email_sendgrid(sender_email, subject_line, html_email)
+
+                        update_booking_in_db(booking_id, {
+                            'status': 'Inquiry',
+                            'note': 'Initial inquiry received. No availability found.'
+                        })
+                else:
+                    logging.warning(f"   API returned non-200 status: {response.status_code}")
+                    # Send fallback email
+                    html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
+                    subject_line = "Tee Time Inquiry - The Island Golf Club"
+                    send_email_sendgrid(sender_email, subject_line, html_email)
+
+                    update_booking_in_db(booking_id, {
+                        'status': 'Inquiry',
+                        'note': 'Initial inquiry received. API unavailable - manual follow-up needed.'
+                    })
+
+            except requests.RequestException as e:
+                logging.error(f"   ❌ API error: {e}")
+                # Send fallback email
+                html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
+                subject_line = "Tee Time Inquiry - The Island Golf Club"
+                send_email_sendgrid(sender_email, subject_line, html_email)
+
+                update_booking_in_db(booking_id, {
+                    'status': 'Inquiry',
+                    'note': f'Initial inquiry received. API error: {str(e)}'
+                })
+        else:
+            # No dates found - send "please provide dates" email
+            logging.info(f"   ℹ️  No dates provided")
+            html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
+            subject_line = "Tee Time Inquiry - The Island Golf Club"
+            send_email_sendgrid(sender_email, subject_line, html_email)
+
+            update_booking_in_db(booking_id, {
+                'status': 'Inquiry',
+                'note': 'Initial inquiry received. No dates provided - awaiting customer response.'
+            })
+
+        logging.info(f"✅ Background processing completed for booking {booking_id}")
+
+    except Exception as e:
+        logging.error(f"❌ Background processing error for {booking_id}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+
+        # Try to update booking with error status
+        try:
+            update_booking_in_db(booking_id, {
+                'status': 'Inquiry',
+                'note': f'Error during processing: {str(e)}'
+            })
+        except:
+            pass
+
+
+# ============================================================================
 # EMAIL DETECTION FUNCTIONS
 # ============================================================================
 
@@ -1404,7 +1604,10 @@ def health():
 @app.route('/webhook/inbound', methods=['POST'])
 def handle_inbound_email():
     """
-    Handle incoming emails with the three-stage customer journey:
+    Handle incoming emails with the three-stage customer journey
+
+    CRITICAL: This endpoint MUST respond within 10 seconds to prevent webhook retries
+    All slow processing (API calls, email sending) happens in background threads
 
     Stage 1 - Inquiry:
         Customer sends initial email → Status: 'Inquiry'
@@ -1421,6 +1624,8 @@ def handle_inbound_email():
     Additional:
         Customer replies to acknowledgment → Status maintained as 'Requested'
     """
+    start_time = time.time()
+
     try:
         from_email = request.form.get('from', '')
         subject = request.form.get('subject', '')
@@ -1435,12 +1640,14 @@ def handle_inbound_email():
         logging.info(f"📨 INBOUND WEBHOOK")
         logging.info(f"From: {from_email}")
         logging.info(f"Subject: {subject}")
+        logging.info(f"Message-ID: {message_id}")
         logging.info("="*80)
 
-        # Check for duplicate
+        # CRITICAL: Check for duplicate FIRST (prevents retries from processing)
         if message_id and is_duplicate_message(message_id):
-            logging.warning(f"⚠️  DUPLICATE - SKIPPING")
-            return jsonify({'status': 'duplicate'}), 200
+            elapsed = time.time() - start_time
+            logging.warning(f"⚠️  DUPLICATE MESSAGE - SKIPPING (responded in {elapsed:.2f}s)")
+            return jsonify({'status': 'duplicate', 'message_id': message_id}), 200
 
         # Extract clean email
         if '<' in from_email:
@@ -1449,9 +1656,13 @@ def handle_inbound_email():
             sender_email = from_email
 
         if not sender_email or '@' not in sender_email:
+            elapsed = time.time() - start_time
+            logging.warning(f"⚠️  Invalid email (responded in {elapsed:.2f}s)")
             return jsonify({'status': 'invalid_email'}), 400
 
         if not body or len(body.strip()) < 10:
+            elapsed = time.time() - start_time
+            logging.warning(f"⚠️  Empty body (responded in {elapsed:.2f}s)")
             return jsonify({'status': 'empty_body'}), 200
 
         # Parse basic info
@@ -1462,6 +1673,7 @@ def handle_inbound_email():
 
         # Case 0: STAFF CONFIRMATION (manual confirmation by booking team - Stage 3)
         if is_staff_confirmation(subject, body, sender_email):
+            start_time = time.time()
             logging.info("✅ DETECTED: STAFF CONFIRMATION (Manual confirmation by team)")
 
             # Extract booking ID from email
@@ -1472,7 +1684,7 @@ def handle_inbound_email():
                 booking = get_booking_by_id(booking_id)
 
                 if booking and booking.get('status') == 'Requested':
-                    # Update booking to "Confirmed"
+                    # Update booking to "Confirmed" IMMEDIATELY
                     logging.info(f"   Updating booking {booking_id} to 'Confirmed'")
 
                     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1486,44 +1698,50 @@ def handle_inbound_email():
 
                     update_booking_in_db(booking_id, updates)
 
-                    # Get customer email from booking
-                    customer_email = booking.get('customer_email')
+                    elapsed = time.time() - start_time
+                    logging.info(f"✅ Booking confirmed in DB (responded in {elapsed:.2f}s)")
 
-                    if customer_email:
-                        # Check if confirmation email was already sent (prevent duplicates)
-                        if was_confirmation_sent(booking_id):
-                            logging.warning(f"   ⚠️  Confirmation email already sent for {booking_id} - skipping duplicate")
-                        else:
-                            # Send CONFIRMATION email with payment details
-                            logging.info("   Sending confirmation email with payment details...")
-                            html_email = format_confirmation_email(booking)
-                            subject_line = "Booking Confirmed - The Island Golf Club"
-                            send_email_sendgrid(customer_email, subject_line, html_email)
+                    # Start background thread for email sending
+                    # Refresh booking data after status update
+                    updated_booking = get_booking_by_id(booking_id)
+                    if updated_booking:
+                        thread = Thread(
+                            target=process_staff_confirmation_async,
+                            args=(booking_id, updated_booking)
+                        )
+                        thread.daemon = True
+                        thread.start()
+                        logging.info(f"🔄 Background thread started for confirmation email {booking_id}")
 
-                            # Update note to reflect confirmation email sent
-                            conf_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            update_booking_in_db(booking_id, {
-                                'note': f"{new_note}\nConfirmation email sent on {conf_timestamp}"
-                            })
-
+                    # Return 200 immediately (before email is sent)
                     return jsonify({'status': 'confirmed', 'booking_id': booking_id}), 200
                 else:
+                    elapsed = time.time() - start_time
                     status = booking.get('status') if booking else 'not found'
-                    logging.warning(f"   Booking {booking_id} cannot be confirmed (current status: {status})")
+                    logging.warning(f"   Booking {booking_id} cannot be confirmed (current status: {status}) (responded in {elapsed:.2f}s)")
                     return jsonify({'status': 'invalid_status', 'current_status': status}), 200
             else:
-                logging.warning("   Confirmation request but no booking ID found")
+                elapsed = time.time() - start_time
+                logging.warning(f"   Confirmation request but no booking ID found (responded in {elapsed:.2f}s)")
                 return jsonify({'status': 'no_booking_id'}), 200
 
         # Case 1: BOOKING REQUEST (customer clicked "Book Now")
         elif is_booking_request(subject, body):
+            start_time = time.time()
             logging.info("📝 DETECTED: BOOKING REQUEST (Customer clicked Book Now)")
 
             # Extract booking ID from email
             booking_id = extract_booking_id(subject) or extract_booking_id(body)
 
             if booking_id:
-                # Update existing booking to "Requested"
+                # Check if already processed (prevent duplicate processing)
+                booking = get_booking_by_id(booking_id)
+                if booking and booking.get('status') == 'Requested' and booking.get('confirmation_message_id'):
+                    elapsed = time.time() - start_time
+                    logging.warning(f"   ⚠️  Already processed (responded in {elapsed:.2f}s)")
+                    return jsonify({'status': 'already_requested', 'booking_id': booking_id}), 200
+
+                # Update existing booking to "Requested" IMMEDIATELY
                 logging.info(f"   Updating booking {booking_id} to 'Requested'")
 
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1544,31 +1762,28 @@ def handle_inbound_email():
 
                 update_booking_in_db(booking_id, updates)
 
-                # Check if acknowledgment email was already sent (prevent duplicates)
-                if was_acknowledgment_sent(booking_id):
-                    logging.warning(f"   ⚠️  Acknowledgment email already sent for {booking_id} - skipping duplicate")
-                else:
-                    # Send ACKNOWLEDGMENT email
-                    logging.info("   Sending acknowledgment email...")
-                    booking_data = get_booking_by_id(booking_id)
-                    if booking_data:
-                        html_email = format_acknowledgment_email(booking_data)
-                        subject_line = "Your Booking Request - The Island Golf Club"
-                        send_email_sendgrid(sender_email, subject_line, html_email)
+                elapsed = time.time() - start_time
+                logging.info(f"✅ Booking request saved to DB (responded in {elapsed:.2f}s)")
 
-                        # Update note to reflect acknowledgment sent
-                        ack_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        update_booking_in_db(booking_id, {
-                            'note': f"Customer sent booking request on {timestamp}\nAcknowledgment email sent on {ack_timestamp}"
-                        })
+                # Start background thread for email sending
+                thread = Thread(
+                    target=process_booking_request_async,
+                    args=(booking_id, sender_email, timestamp)
+                )
+                thread.daemon = True
+                thread.start()
+                logging.info(f"🔄 Background thread started for acknowledgment email {booking_id}")
 
+                # Return 200 immediately (before email is sent)
                 return jsonify({'status': 'requested', 'booking_id': booking_id}), 200
             else:
-                logging.warning("   Booking request but no booking ID found")
+                elapsed = time.time() - start_time
+                logging.warning(f"   Booking request but no booking ID found (responded in {elapsed:.2f}s)")
                 return jsonify({'status': 'no_booking_id'}), 200
 
         # Case 2: CUSTOMER REPLY (replying to acknowledgment)
         elif is_customer_reply(subject, body):
+            start_time = time.time()
             logging.info("💬 DETECTED: CUSTOMER REPLY")
 
             booking_id = extract_booking_id(subject) or extract_booking_id(body)
@@ -1586,6 +1801,8 @@ def handle_inbound_email():
                         'note': new_note
                     })
 
+                    elapsed = time.time() - start_time
+                    logging.info(f"✅ Reply processed (responded in {elapsed:.2f}s)")
                     return jsonify({'status': 'reply_received', 'booking_id': booking_id}), 200
 
             logging.info("   Reply but no matching booking found - treating as new inquiry")
@@ -1593,17 +1810,17 @@ def handle_inbound_email():
         # Case 3: NEW INQUIRY (default)
         logging.info("📧 DETECTED: NEW INQUIRY")
 
-        # Check if we already sent an inquiry response recently for same dates (prevent duplicates)
+        # Check for recent duplicate inquiry
         existing_booking_id = was_inquiry_email_sent_recently(sender_email, parsed['dates'], hours=1)
         if existing_booking_id:
-            logging.warning(f"   ⚠️  Similar inquiry email already sent recently ({existing_booking_id}) - skipping duplicate")
+            elapsed = time.time() - start_time
+            logging.warning(f"⚠️  Duplicate inquiry (responded in {elapsed:.2f}s)")
             return jsonify({'status': 'duplicate_inquiry', 'existing_booking_id': existing_booking_id}), 200
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Create new booking with status 'Inquiry'
         booking_id = generate_booking_id(sender_email, timestamp)
 
+        # Create booking with "Processing" status initially
         new_entry = {
             "booking_id": booking_id,
             "timestamp": timestamp,
@@ -1614,65 +1831,46 @@ def handle_inbound_email():
             "tee_time": None,
             "players": parsed['players'],
             "total": PER_PLAYER_FEE * parsed['players'],
-            "status": "Inquiry",  # ← KEY: Initial status is "Inquiry"
-            "note": "Initial inquiry received",
+            "status": "Processing",  # ← Temporary status while we check availability
+            "note": "Webhook received, checking availability...",
             "club": DEFAULT_COURSE_ID,
             "club_name": FROM_NAME
         }
 
+        # Save to database IMMEDIATELY
         save_booking_to_db(new_entry)
 
-        # Check availability and send inquiry email with time offers
-        if parsed['dates']:
-            try:
-                response = requests.post(
-                    f"{CORE_API_URL}/check_availability",
-                    json={
-                        'course_id': DEFAULT_COURSE_ID,
-                        'dates': parsed['dates'],
-                        'players': parsed['players']
-                    },
-                    timeout=120
-                )
+        elapsed = time.time() - start_time
+        logging.info(f"✅ Inquiry saved to DB (responded in {elapsed:.2f}s)")
 
-                if response.status_code == 200:
-                    api_data = response.json()
-                    results = api_data.get('results', [])
+        # Start background processing thread (API call + email sending)
+        thread = Thread(
+            target=process_inquiry_async,
+            args=(sender_email, parsed, booking_id, parsed['dates'], parsed['players'])
+        )
+        thread.daemon = True
+        thread.start()
 
-                    if results:
-                        # Send inquiry email with available times
-                        html_email = format_inquiry_email(results, parsed['players'], sender_email, booking_id)
-                        subject_line = "Available Tee Times at The Island Golf Club"
-                        send_email_sendgrid(sender_email, subject_line, html_email)
-                    else:
-                        # No availability
-                        html_email = format_no_availability_email(parsed['players'])
-                        subject_line = "Tee Time Availability - The Island Golf Club"
-                        send_email_sendgrid(sender_email, subject_line, html_email)
-                else:
-                    logging.warning(f"API returned non-200 status: {response.status_code}")
-                    # Send fallback "we received your inquiry" email
-                    html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
-                    subject_line = "Tee Time Inquiry - The Island Golf Club"
-                    send_email_sendgrid(sender_email, subject_line, html_email)
+        logging.info(f"🔄 Background thread started for booking {booking_id}")
 
-            except requests.RequestException as e:
-                logging.error(f"API error: {e}")
-                # Send fallback "we received your inquiry" email
-                html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
-                subject_line = "Tee Time Inquiry - The Island Golf Club"
-                send_email_sendgrid(sender_email, subject_line, html_email)
-        else:
-            # No dates found - send "please provide dates" email
-            html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
-            subject_line = "Tee Time Inquiry - The Island Golf Club"
-            send_email_sendgrid(sender_email, subject_line, html_email)
-
-        return jsonify({'status': 'inquiry_created', 'booking_id': booking_id}), 200
+        # Return 200 immediately (before API call completes)
+        return jsonify({
+            'status': 'inquiry_accepted',
+            'booking_id': booking_id,
+            'processing': 'background'
+        }), 200
 
     except Exception as e:
-        logging.exception(f"❌ ERROR:")
+        elapsed = time.time() - start_time
+        logging.exception(f"❌ ERROR (responded in {elapsed:.2f}s):")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        # Always log response time
+        elapsed = time.time() - start_time
+        if elapsed > 10:
+            logging.error(f"🚨 SLOW RESPONSE: {elapsed:.2f}s - WEBHOOK MAY RETRY!")
+        else:
+            logging.info(f"⏱️  Response time: {elapsed:.2f}s")
 
 
 @app.route('/api/bookings', methods=['GET'])
