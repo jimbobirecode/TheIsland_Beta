@@ -59,33 +59,32 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_bookings_updated_at BEFORE UPDATE ON bookings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Waitlist table for tee time requests
+-- Waitlist table for tee time requests (matches dashboard schema)
 CREATE TABLE IF NOT EXISTS waitlist (
     id SERIAL PRIMARY KEY,
-    request_id VARCHAR(255) UNIQUE NOT NULL,
+    waitlist_id VARCHAR(50) UNIQUE NOT NULL,
     guest_email VARCHAR(255) NOT NULL,
     guest_name VARCHAR(255),
     requested_date DATE NOT NULL,
-    preferred_time_start TIME,
-    preferred_time_end TIME,
-    players INTEGER NOT NULL DEFAULT 4,
-    flexibility VARCHAR(50) DEFAULT 'flexible', -- strict, flexible, very_flexible
-    priority INTEGER DEFAULT 0, -- higher = more priority
-    status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, notified, converted, expired, cancelled
+    preferred_time VARCHAR(50),
+    time_flexibility VARCHAR(50) DEFAULT 'Flexible',
+    players INTEGER DEFAULT 1,
+    golf_course VARCHAR(255),
+    status VARCHAR(50) DEFAULT 'Waiting',
+    priority INTEGER DEFAULT 5,
     notes TEXT,
-    notified_at TIMESTAMP,
-    converted_booking_id VARCHAR(255),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    notification_sent BOOLEAN DEFAULT FALSE,
+    notification_sent_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
-    expires_at TIMESTAMP,
-    club VARCHAR(255),
-    CONSTRAINT valid_waitlist_status CHECK (status IN ('pending', 'notified', 'converted', 'expired', 'cancelled'))
+    club VARCHAR(100) NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist(guest_email);
 CREATE INDEX IF NOT EXISTS idx_waitlist_date ON waitlist(requested_date);
 CREATE INDEX IF NOT EXISTS idx_waitlist_status ON waitlist(status);
 CREATE INDEX IF NOT EXISTS idx_waitlist_created_at ON waitlist(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_waitlist_club ON waitlist(club);
 
 CREATE TRIGGER update_waitlist_updated_at BEFORE UPDATE ON waitlist
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

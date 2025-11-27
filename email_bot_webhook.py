@@ -2910,16 +2910,16 @@ def api_export_logs():
 
 
 # ============================================================================
-# WAITLIST MODULE - Tee Time Request Management
+# WAITLIST MODULE - Tee Time Request Management (matches dashboard schema)
 # ============================================================================
 
-def generate_waitlist_id():
-    """Generate unique waitlist request ID"""
-    return f"WL-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+def generate_waitlist_id(guest_email):
+    """Generate unique waitlist ID matching dashboard format"""
+    return f"WL-{datetime.now().strftime('%Y%m%d%H%M%S')}-{hash(guest_email) % 10000:04d}"
 
 
 def init_waitlist_table():
-    """Initialize waitlist table if not exists"""
+    """Initialize waitlist table if not exists (matches dashboard schema)"""
     conn = None
     try:
         conn = get_db_connection()
@@ -2930,23 +2930,22 @@ def init_waitlist_table():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS waitlist (
                 id SERIAL PRIMARY KEY,
-                request_id VARCHAR(255) UNIQUE NOT NULL,
+                waitlist_id VARCHAR(50) UNIQUE NOT NULL,
                 guest_email VARCHAR(255) NOT NULL,
                 guest_name VARCHAR(255),
                 requested_date DATE NOT NULL,
-                preferred_time_start TIME,
-                preferred_time_end TIME,
-                players INTEGER NOT NULL DEFAULT 4,
-                flexibility VARCHAR(50) DEFAULT 'flexible',
-                priority INTEGER DEFAULT 0,
-                status VARCHAR(50) NOT NULL DEFAULT 'pending',
+                preferred_time VARCHAR(50),
+                time_flexibility VARCHAR(50) DEFAULT 'Flexible',
+                players INTEGER DEFAULT 1,
+                golf_course VARCHAR(255),
+                status VARCHAR(50) DEFAULT 'Waiting',
+                priority INTEGER DEFAULT 5,
                 notes TEXT,
-                notified_at TIMESTAMP,
-                converted_booking_id VARCHAR(255),
-                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                notification_sent BOOLEAN DEFAULT FALSE,
+                notification_sent_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW(),
-                expires_at TIMESTAMP,
-                club VARCHAR(255)
+                club VARCHAR(100) NOT NULL
             )
         """)
         conn.commit()
@@ -2973,14 +2972,19 @@ def api_get_waitlist():
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         status_filter = request.args.get('status')
-        query = "SELECT * FROM waitlist"
+        club_filter = request.args.get('club')
+        query = "SELECT * FROM waitlist WHERE 1=1"
         params = []
 
         if status_filter:
-            query += " WHERE status = %s"
+            query += " AND status = %s"
             params.append(status_filter)
 
-        query += " ORDER BY priority DESC, created_at ASC"
+        if club_filter:
+            query += " AND club = %s"
+            params.append(club_filter)
+
+        query += " ORDER BY requested_date ASC, priority DESC, created_at ASC"
 
         cursor.execute(query, params)
         waitlist = cursor.fetchall()
@@ -2989,12 +2993,9 @@ def api_get_waitlist():
         result = []
         for item in waitlist:
             item_dict = dict(item)
-            for field in ['requested_date', 'notified_at', 'created_at', 'updated_at', 'expires_at']:
+            for field in ['requested_date', 'notification_sent_at', 'created_at', 'updated_at']:
                 if item_dict.get(field) and hasattr(item_dict[field], 'strftime'):
-                    item_dict[field] = item_dict[field].strftime('%Y-%m-%d %H:%M:%S') if 'at' in field else item_dict[field].strftime('%Y-%m-%d')
-            for field in ['preferred_time_start', 'preferred_time_end']:
-                if item_dict.get(field) and hasattr(item_dict[field], 'strftime'):
-                    item_dict[field] = item_dict[field].strftime('%H:%M')
+                    item_dict[field] = item_dict[field].strftime('%Y-%m-%d %H:%M:%S') if '_at' in field else item_dict[field].strftime('%Y-%m-%d')
             result.append(item_dict)
 
         return jsonify({'success': True, 'waitlist': result, 'count': len(result)})
@@ -3012,12 +3013,12 @@ def api_add_to_waitlist():
     try:
         data = request.json
 
-        required_fields = ['guest_email', 'requested_date', 'players']
+        required_fields = ['guest_email', 'requested_date', 'club']
         for field in required_fields:
             if not data.get(field):
                 return jsonify({'success': False, 'error': f'{field} is required'}), 400
 
-        request_id = generate_waitlist_id()
+        waitlist_id = generate_waitlist_id(data['guest_email'])
 
         conn = get_db_connection()
         if not conn:
@@ -3026,33 +3027,32 @@ def api_add_to_waitlist():
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO waitlist (
-                request_id, guest_email, guest_name, requested_date,
-                preferred_time_start, preferred_time_end, players,
-                flexibility, priority, notes, expires_at, club
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                waitlist_id, guest_email, guest_name, requested_date,
+                preferred_time, time_flexibility, players,
+                golf_course, priority, notes, club
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
-            request_id,
+            waitlist_id,
             data['guest_email'],
             data.get('guest_name'),
             data['requested_date'],
-            data.get('preferred_time_start'),
-            data.get('preferred_time_end'),
-            data['players'],
-            data.get('flexibility', 'flexible'),
-            data.get('priority', 0),
+            data.get('preferred_time'),
+            data.get('time_flexibility', 'Flexible'),
+            data.get('players', 1),
+            data.get('golf_course'),
+            data.get('priority', 5),
             data.get('notes'),
-            data.get('expires_at'),
-            data.get('club', DEFAULT_COURSE_ID)
+            data['club']
         ))
 
         conn.commit()
         cursor.close()
 
-        logging.info(f"📋 Added to waitlist: {request_id} for {data['guest_email']}")
+        logging.info(f"📋 Added to waitlist: {waitlist_id} for {data['guest_email']}")
 
         return jsonify({
             'success': True,
-            'request_id': request_id,
+            'waitlist_id': waitlist_id,
             'message': 'Added to waitlist successfully'
         }), 201
     except Exception as e:
@@ -3063,8 +3063,8 @@ def api_add_to_waitlist():
             release_db_connection(conn)
 
 
-@app.route('/api/waitlist/<request_id>', methods=['PUT'])
-def api_update_waitlist(request_id):
+@app.route('/api/waitlist/<waitlist_id>', methods=['PUT'])
+def api_update_waitlist(waitlist_id):
     """Update waitlist request status"""
     conn = None
     try:
@@ -3079,7 +3079,7 @@ def api_update_waitlist(request_id):
         set_clauses = []
         params = []
 
-        updatable_fields = ['status', 'priority', 'notes', 'notified_at', 'converted_booking_id', 'flexibility']
+        updatable_fields = ['status', 'priority', 'notes', 'time_flexibility', 'preferred_time', 'notification_sent', 'notification_sent_at']
         for field in updatable_fields:
             if field in data:
                 set_clauses.append(f"{field} = %s")
@@ -3089,10 +3089,10 @@ def api_update_waitlist(request_id):
             return jsonify({'success': False, 'error': 'No valid fields to update'}), 400
 
         set_clauses.append("updated_at = NOW()")
-        params.append(request_id)
+        params.append(waitlist_id)
 
         cursor.execute(f"""
-            UPDATE waitlist SET {', '.join(set_clauses)} WHERE request_id = %s
+            UPDATE waitlist SET {', '.join(set_clauses)} WHERE waitlist_id = %s
         """, params)
 
         rows_affected = cursor.rowcount
@@ -3110,8 +3110,8 @@ def api_update_waitlist(request_id):
             release_db_connection(conn)
 
 
-@app.route('/api/waitlist/<request_id>/convert', methods=['POST'])
-def api_convert_waitlist_to_booking(request_id):
+@app.route('/api/waitlist/<waitlist_id>/convert', methods=['POST'])
+def api_convert_waitlist_to_booking(waitlist_id):
     """Convert waitlist request to actual booking"""
     conn = None
     try:
@@ -3123,35 +3123,35 @@ def api_convert_waitlist_to_booking(request_id):
 
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        cursor.execute("SELECT * FROM waitlist WHERE request_id = %s", (request_id,))
+        cursor.execute("SELECT * FROM waitlist WHERE waitlist_id = %s", (waitlist_id,))
         waitlist_item = cursor.fetchone()
 
         if not waitlist_item:
             return jsonify({'success': False, 'error': 'Waitlist request not found'}), 404
 
-        if waitlist_item['status'] == 'converted':
+        if waitlist_item['status'] == 'Converted':
             return jsonify({'success': False, 'error': 'Already converted to booking'}), 400
 
         booking_id = generate_booking_id(waitlist_item['guest_email'])
-        tee_time = data.get('tee_time') or (waitlist_item['preferred_time_start'].strftime('%H:%M') if waitlist_item.get('preferred_time_start') else None)
+        tee_time = data.get('tee_time') or waitlist_item.get('preferred_time')
 
         booking_data = {
             'booking_id': booking_id,
-            'message_id': f"waitlist-conversion-{request_id}",
+            'message_id': f"waitlist-conversion-{waitlist_id}",
             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'guest_email': waitlist_item['guest_email'],
             'dates': [str(waitlist_item['requested_date'])],
             'date': str(waitlist_item['requested_date']),
             'tee_time': tee_time,
-            'players': waitlist_item['players'],
-            'total': waitlist_item['players'] * PER_PLAYER_FEE,
-            'status': 'provisional',
+            'players': waitlist_item.get('players', 1),
+            'total': waitlist_item.get('players', 1) * PER_PLAYER_FEE,
+            'status': 'Requested',
             'intent': 'waitlist_conversion',
             'urgency': 'normal',
             'confidence': 1.0,
             'is_corporate': False,
             'company_name': None,
-            'note': f"Converted from waitlist request {request_id}. {waitlist_item.get('notes', '')}",
+            'note': f"Converted from waitlist {waitlist_id}. {waitlist_item.get('notes', '')}",
             'club': waitlist_item.get('club', DEFAULT_COURSE_ID),
             'club_name': FROM_NAME
         }
@@ -3160,12 +3160,12 @@ def api_convert_waitlist_to_booking(request_id):
 
         if result_booking_id:
             cursor.execute("""
-                UPDATE waitlist SET status = 'converted', converted_booking_id = %s, updated_at = NOW()
-                WHERE request_id = %s
-            """, (result_booking_id, request_id))
+                UPDATE waitlist SET status = 'Converted', updated_at = NOW()
+                WHERE waitlist_id = %s
+            """, (waitlist_id,))
             conn.commit()
 
-            logging.info(f"✅ Converted waitlist {request_id} to booking {result_booking_id}")
+            logging.info(f"✅ Converted waitlist {waitlist_id} to booking {result_booking_id}")
 
             return jsonify({
                 'success': True,
@@ -3183,8 +3183,8 @@ def api_convert_waitlist_to_booking(request_id):
             release_db_connection(conn)
 
 
-@app.route('/api/waitlist/<request_id>/notify', methods=['POST'])
-def api_notify_waitlist(request_id):
+@app.route('/api/waitlist/<waitlist_id>/notify', methods=['POST'])
+def api_notify_waitlist(waitlist_id):
     """Send notification to waitlist customer about availability"""
     conn = None
     try:
@@ -3195,7 +3195,7 @@ def api_notify_waitlist(request_id):
             return jsonify({'success': False, 'error': 'No database connection'}), 500
 
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT * FROM waitlist WHERE request_id = %s", (request_id,))
+        cursor.execute("SELECT * FROM waitlist WHERE waitlist_id = %s", (waitlist_id,))
         waitlist_item = cursor.fetchone()
 
         if not waitlist_item:
@@ -3221,9 +3221,9 @@ def api_notify_waitlist(request_id):
         email_thread.start()
 
         cursor.execute("""
-            UPDATE waitlist SET status = 'notified', notified_at = NOW(), updated_at = NOW()
-            WHERE request_id = %s
-        """, (request_id,))
+            UPDATE waitlist SET status = 'Notified', notification_sent = TRUE, notification_sent_at = NOW(), updated_at = NOW()
+            WHERE waitlist_id = %s
+        """, (waitlist_id,))
         conn.commit()
         cursor.close()
 
@@ -3243,7 +3243,7 @@ def format_waitlist_notification_email(course_name: str, waitlist_item: dict, av
     html = get_email_header(course_name)
 
     requested_date = waitlist_item.get('requested_date', 'your requested date')
-    players = waitlist_item.get('players', 4)
+    players = waitlist_item.get('players', 1)
 
     html += f"""
         <div style="background: linear-gradient(135deg, #2D5F3F 0%, #1a3a25 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
@@ -3257,7 +3257,7 @@ def format_waitlist_notification_email(course_name: str, waitlist_item: dict, av
             <h3><span class="emoji">📋</span>Your Waitlist Request</h3>
             <p><strong>Date:</strong> {requested_date}</p>
             <p><strong>Players:</strong> {players}</p>
-            <p><strong>Request ID:</strong> {waitlist_item.get('request_id', 'N/A')}</p>
+            <p><strong>Request ID:</strong> {waitlist_item.get('waitlist_id', 'N/A')}</p>
         </div>
     """
 
