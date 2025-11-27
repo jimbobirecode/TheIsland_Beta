@@ -2767,16 +2767,25 @@ def format_availability_response(parsed, api_response: dict, guest_email: str, b
     used_alternatives = api_response.get('used_alternatives', False)
     original_dates = api_response.get('original_dates', [])
     checked_alternatives = api_response.get('checked_alternatives', False)
-    
+
+    # Fallback: If original_dates is empty, extract from parsed dates
+    if not original_dates and hasattr(parsed, 'dates') and parsed.dates:
+        fallback_dates = []
+        if parsed.dates.start_date:
+            fallback_dates.append(parsed.dates.start_date.strftime('%Y-%m-%d'))
+        if parsed.dates.end_date and parsed.dates.end_date != parsed.dates.start_date:
+            fallback_dates.append(parsed.dates.end_date.strftime('%Y-%m-%d'))
+        original_dates = fallback_dates
+
     if not api_response.get("success"):
         subject = "Tee Time Availability Check"
         body = format_error_email_html(FROM_NAME, api_response.get("error"), FROM_EMAIL)
         return subject, body
-    
+
     results = api_response.get("results", [])
     if not results:
         subject = "No Availability Found"
-        
+
         # Extract preferred time from parsed data if available
         preferred_time = None
         if hasattr(parsed, 'times') and parsed.times:
