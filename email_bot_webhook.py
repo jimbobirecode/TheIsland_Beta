@@ -2666,12 +2666,1099 @@ def api_update_booking(booking_id):
     """API endpoint for dashboard updates"""
     try:
         data = request.json
-        
+
         if update_booking_in_db(booking_id, data):
             return jsonify({'success': True})
         else:
             return jsonify({'success': False}), 500
-            
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# NOTIFY PLATFORM INTEGRATION - Export APIs (JSON, CSV, API)
+# ============================================================================
+
+def log_export(export_type: str, records_count: int, destination: str = None, filters: dict = None, status: str = 'completed', error: str = None):
+    """Log export activity to database"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return None
+
+        export_id = f"EXP-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6].upper()}"
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO export_logs (export_id, export_type, destination, records_exported, status, error_message, filters, completed_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (export_id, export_type, destination, records_count, status, error, Json(filters) if filters else None, datetime.now() if status == 'completed' else None))
+
+        conn.commit()
+        cursor.close()
+        return export_id
+    except Exception as e:
+        logging.error(f"❌ Failed to log export: {e}")
+        return None
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+def get_filtered_bookings(filters: dict = None):
+    """Get bookings with optional filters for export"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return []
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        query = """
+            SELECT
+                booking_id, timestamp, guest_email, dates, date, tee_time,
+                players, total, status, intent, urgency, confidence,
+                is_corporate, company_name, note, club, club_name,
+                customer_confirmed_at, created_at, updated_at
+            FROM bookings
+            WHERE 1=1
+        """
+        params = []
+
+        if filters:
+            if filters.get('status'):
+                query += " AND status = %s"
+                params.append(filters['status'])
+            if filters.get('date_from'):
+                query += " AND date >= %s"
+                params.append(filters['date_from'])
+            if filters.get('date_to'):
+                query += " AND date <= %s"
+                params.append(filters['date_to'])
+            if filters.get('club'):
+                query += " AND club = %s"
+                params.append(filters['club'])
+
+        query += " ORDER BY created_at DESC"
+
+        if filters and filters.get('limit'):
+            query += f" LIMIT {int(filters['limit'])}"
+
+        cursor.execute(query, params)
+        bookings = cursor.fetchall()
+        cursor.close()
+
+        result = []
+        for booking in bookings:
+            booking_dict = dict(booking)
+            for field in ['timestamp', 'customer_confirmed_at', 'created_at', 'updated_at']:
+                if booking_dict.get(field) and hasattr(booking_dict[field], 'strftime'):
+                    booking_dict[field] = booking_dict[field].strftime('%Y-%m-%d %H:%M:%S')
+            if booking_dict.get('date') and hasattr(booking_dict['date'], 'strftime'):
+                booking_dict['date'] = booking_dict['date'].strftime('%Y-%m-%d')
+            if booking_dict.get('tee_time') and hasattr(booking_dict['tee_time'], 'strftime'):
+                booking_dict['tee_time'] = booking_dict['tee_time'].strftime('%H:%M')
+            result.append(booking_dict)
+
+        return result
+    except Exception as e:
+        logging.error(f"❌ Failed to get filtered bookings: {e}")
+        return []
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+@app.route('/api/export/json', methods=['GET', 'POST'])
+def api_export_json():
+    """Export bookings as JSON for external notification systems"""
+    try:
+        filters = request.json if request.method == 'POST' else {}
+        bookings = get_filtered_bookings(filters)
+
+        export_id = log_export('json', len(bookings), filters=filters)
+
+        return jsonify({
+            'success': True,
+            'export_id': export_id,
+            'format': 'json',
+            'count': len(bookings),
+            'exported_at': datetime.now().isoformat(),
+            'data': bookings
+        })
+    except Exception as e:
+        logging.error(f"❌ JSON export error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/export/csv', methods=['GET', 'POST'])
+def api_export_csv():
+    """Export bookings as CSV for external systems"""
+    try:
+        import csv
+        import io
+
+        filters = request.json if request.method == 'POST' else {}
+        bookings = get_filtered_bookings(filters)
+
+        if not bookings:
+            return jsonify({'success': False, 'error': 'No bookings found'}), 404
+
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=bookings[0].keys())
+        writer.writeheader()
+        writer.writerows(bookings)
+
+        csv_content = output.getvalue()
+        export_id = log_export('csv', len(bookings), filters=filters)
+
+        from flask import Response
+        return Response(
+            csv_content,
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename=bookings_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
+                'X-Export-Id': export_id,
+                'X-Record-Count': str(len(bookings))
+            }
+        )
+    except Exception as e:
+        logging.error(f"❌ CSV export error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/export/push', methods=['POST'])
+def api_export_push():
+    """Push booking data to external API endpoint (webhook)"""
+    try:
+        data = request.json
+        destination_url = data.get('destination_url')
+        filters = data.get('filters', {})
+        headers = data.get('headers', {})
+
+        if not destination_url:
+            return jsonify({'success': False, 'error': 'destination_url is required'}), 400
+
+        bookings = get_filtered_bookings(filters)
+
+        payload = {
+            'source': 'TheIsland Golf Club',
+            'exported_at': datetime.now().isoformat(),
+            'count': len(bookings),
+            'bookings': bookings
+        }
+
+        response = requests.post(
+            destination_url,
+            json=payload,
+            headers={'Content-Type': 'application/json', **headers},
+            timeout=30
+        )
+
+        status = 'completed' if response.status_code < 400 else 'failed'
+        error = response.text if response.status_code >= 400 else None
+
+        export_id = log_export('api', len(bookings), destination=destination_url, filters=filters, status=status, error=error)
+
+        return jsonify({
+            'success': response.status_code < 400,
+            'export_id': export_id,
+            'destination': destination_url,
+            'records_pushed': len(bookings),
+            'response_status': response.status_code,
+            'response_message': response.text[:500] if response.text else None
+        })
+    except requests.exceptions.RequestException as e:
+        logging.error(f"❌ API push error: {e}")
+        log_export('api', 0, destination=data.get('destination_url'), status='failed', error=str(e))
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/export/logs', methods=['GET'])
+def api_export_logs():
+    """Get export history"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'No database connection'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT * FROM export_logs ORDER BY created_at DESC LIMIT 100
+        """)
+        logs = cursor.fetchall()
+        cursor.close()
+
+        result = []
+        for log in logs:
+            log_dict = dict(log)
+            for field in ['created_at', 'completed_at']:
+                if log_dict.get(field) and hasattr(log_dict[field], 'strftime'):
+                    log_dict[field] = log_dict[field].strftime('%Y-%m-%d %H:%M:%S')
+            result.append(log_dict)
+
+        return jsonify({'success': True, 'logs': result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+# ============================================================================
+# WAITLIST MODULE - Tee Time Request Management
+# ============================================================================
+
+def generate_waitlist_id():
+    """Generate unique waitlist request ID"""
+    return f"WL-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+
+
+def init_waitlist_table():
+    """Initialize waitlist table if not exists"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return False
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS waitlist (
+                id SERIAL PRIMARY KEY,
+                request_id VARCHAR(255) UNIQUE NOT NULL,
+                guest_email VARCHAR(255) NOT NULL,
+                guest_name VARCHAR(255),
+                requested_date DATE NOT NULL,
+                preferred_time_start TIME,
+                preferred_time_end TIME,
+                players INTEGER NOT NULL DEFAULT 4,
+                flexibility VARCHAR(50) DEFAULT 'flexible',
+                priority INTEGER DEFAULT 0,
+                status VARCHAR(50) NOT NULL DEFAULT 'pending',
+                notes TEXT,
+                notified_at TIMESTAMP,
+                converted_booking_id VARCHAR(255),
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW(),
+                expires_at TIMESTAMP,
+                club VARCHAR(255)
+            )
+        """)
+        conn.commit()
+        cursor.close()
+        logging.info("✅ Waitlist table initialized")
+        return True
+    except Exception as e:
+        logging.error(f"❌ Failed to init waitlist table: {e}")
+        return False
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+@app.route('/api/waitlist', methods=['GET'])
+def api_get_waitlist():
+    """Get all waitlist requests"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'No database connection'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        status_filter = request.args.get('status')
+        query = "SELECT * FROM waitlist"
+        params = []
+
+        if status_filter:
+            query += " WHERE status = %s"
+            params.append(status_filter)
+
+        query += " ORDER BY priority DESC, created_at ASC"
+
+        cursor.execute(query, params)
+        waitlist = cursor.fetchall()
+        cursor.close()
+
+        result = []
+        for item in waitlist:
+            item_dict = dict(item)
+            for field in ['requested_date', 'notified_at', 'created_at', 'updated_at', 'expires_at']:
+                if item_dict.get(field) and hasattr(item_dict[field], 'strftime'):
+                    item_dict[field] = item_dict[field].strftime('%Y-%m-%d %H:%M:%S') if 'at' in field else item_dict[field].strftime('%Y-%m-%d')
+            for field in ['preferred_time_start', 'preferred_time_end']:
+                if item_dict.get(field) and hasattr(item_dict[field], 'strftime'):
+                    item_dict[field] = item_dict[field].strftime('%H:%M')
+            result.append(item_dict)
+
+        return jsonify({'success': True, 'waitlist': result, 'count': len(result)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+@app.route('/api/waitlist', methods=['POST'])
+def api_add_to_waitlist():
+    """Add a new waitlist request"""
+    conn = None
+    try:
+        data = request.json
+
+        required_fields = ['guest_email', 'requested_date', 'players']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'success': False, 'error': f'{field} is required'}), 400
+
+        request_id = generate_waitlist_id()
+
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'No database connection'}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO waitlist (
+                request_id, guest_email, guest_name, requested_date,
+                preferred_time_start, preferred_time_end, players,
+                flexibility, priority, notes, expires_at, club
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            request_id,
+            data['guest_email'],
+            data.get('guest_name'),
+            data['requested_date'],
+            data.get('preferred_time_start'),
+            data.get('preferred_time_end'),
+            data['players'],
+            data.get('flexibility', 'flexible'),
+            data.get('priority', 0),
+            data.get('notes'),
+            data.get('expires_at'),
+            data.get('club', DEFAULT_COURSE_ID)
+        ))
+
+        conn.commit()
+        cursor.close()
+
+        logging.info(f"📋 Added to waitlist: {request_id} for {data['guest_email']}")
+
+        return jsonify({
+            'success': True,
+            'request_id': request_id,
+            'message': 'Added to waitlist successfully'
+        }), 201
+    except Exception as e:
+        logging.error(f"❌ Failed to add to waitlist: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+@app.route('/api/waitlist/<request_id>', methods=['PUT'])
+def api_update_waitlist(request_id):
+    """Update waitlist request status"""
+    conn = None
+    try:
+        data = request.json
+
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'No database connection'}), 500
+
+        cursor = conn.cursor()
+
+        set_clauses = []
+        params = []
+
+        updatable_fields = ['status', 'priority', 'notes', 'notified_at', 'converted_booking_id', 'flexibility']
+        for field in updatable_fields:
+            if field in data:
+                set_clauses.append(f"{field} = %s")
+                params.append(data[field])
+
+        if not set_clauses:
+            return jsonify({'success': False, 'error': 'No valid fields to update'}), 400
+
+        set_clauses.append("updated_at = NOW()")
+        params.append(request_id)
+
+        cursor.execute(f"""
+            UPDATE waitlist SET {', '.join(set_clauses)} WHERE request_id = %s
+        """, params)
+
+        rows_affected = cursor.rowcount
+        conn.commit()
+        cursor.close()
+
+        if rows_affected == 0:
+            return jsonify({'success': False, 'error': 'Request not found'}), 404
+
+        return jsonify({'success': True, 'message': 'Waitlist request updated'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+@app.route('/api/waitlist/<request_id>/convert', methods=['POST'])
+def api_convert_waitlist_to_booking(request_id):
+    """Convert waitlist request to actual booking"""
+    conn = None
+    try:
+        data = request.json or {}
+
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'No database connection'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("SELECT * FROM waitlist WHERE request_id = %s", (request_id,))
+        waitlist_item = cursor.fetchone()
+
+        if not waitlist_item:
+            return jsonify({'success': False, 'error': 'Waitlist request not found'}), 404
+
+        if waitlist_item['status'] == 'converted':
+            return jsonify({'success': False, 'error': 'Already converted to booking'}), 400
+
+        booking_id = generate_booking_id(waitlist_item['guest_email'])
+        tee_time = data.get('tee_time') or (waitlist_item['preferred_time_start'].strftime('%H:%M') if waitlist_item.get('preferred_time_start') else None)
+
+        booking_data = {
+            'booking_id': booking_id,
+            'message_id': f"waitlist-conversion-{request_id}",
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'guest_email': waitlist_item['guest_email'],
+            'dates': [str(waitlist_item['requested_date'])],
+            'date': str(waitlist_item['requested_date']),
+            'tee_time': tee_time,
+            'players': waitlist_item['players'],
+            'total': waitlist_item['players'] * PER_PLAYER_FEE,
+            'status': 'provisional',
+            'intent': 'waitlist_conversion',
+            'urgency': 'normal',
+            'confidence': 1.0,
+            'is_corporate': False,
+            'company_name': None,
+            'note': f"Converted from waitlist request {request_id}. {waitlist_item.get('notes', '')}",
+            'club': waitlist_item.get('club', DEFAULT_COURSE_ID),
+            'club_name': FROM_NAME
+        }
+
+        result_booking_id = save_booking_to_db(booking_data)
+
+        if result_booking_id:
+            cursor.execute("""
+                UPDATE waitlist SET status = 'converted', converted_booking_id = %s, updated_at = NOW()
+                WHERE request_id = %s
+            """, (result_booking_id, request_id))
+            conn.commit()
+
+            logging.info(f"✅ Converted waitlist {request_id} to booking {result_booking_id}")
+
+            return jsonify({
+                'success': True,
+                'booking_id': result_booking_id,
+                'message': 'Waitlist request converted to booking'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create booking'}), 500
+
+    except Exception as e:
+        logging.error(f"❌ Failed to convert waitlist: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+@app.route('/api/waitlist/<request_id>/notify', methods=['POST'])
+def api_notify_waitlist(request_id):
+    """Send notification to waitlist customer about availability"""
+    conn = None
+    try:
+        data = request.json or {}
+
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'No database connection'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT * FROM waitlist WHERE request_id = %s", (request_id,))
+        waitlist_item = cursor.fetchone()
+
+        if not waitlist_item:
+            return jsonify({'success': False, 'error': 'Waitlist request not found'}), 404
+
+        available_times = data.get('available_times', [])
+        custom_message = data.get('message', '')
+
+        html_body = format_waitlist_notification_email(
+            FROM_NAME,
+            waitlist_item,
+            available_times,
+            custom_message
+        )
+
+        subject = f"Good News! Tee Times Available - {waitlist_item['requested_date']}"
+
+        import threading
+        email_thread = threading.Thread(
+            target=send_email_sendgrid,
+            args=(waitlist_item['guest_email'], subject, html_body)
+        )
+        email_thread.start()
+
+        cursor.execute("""
+            UPDATE waitlist SET status = 'notified', notified_at = NOW(), updated_at = NOW()
+            WHERE request_id = %s
+        """, (request_id,))
+        conn.commit()
+        cursor.close()
+
+        return jsonify({
+            'success': True,
+            'message': f"Notification sent to {waitlist_item['guest_email']}"
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+def format_waitlist_notification_email(course_name: str, waitlist_item: dict, available_times: list, custom_message: str = '') -> str:
+    """Format notification email for waitlist customer"""
+    html = get_email_header(course_name)
+
+    requested_date = waitlist_item.get('requested_date', 'your requested date')
+    players = waitlist_item.get('players', 4)
+
+    html += f"""
+        <div style="background: linear-gradient(135deg, #2D5F3F 0%, #1a3a25 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+            <h2 style="margin: 0; font-size: 28px; font-weight: 700;">Great News!</h2>
+            <p style="margin: 10px 0 0 0; opacity: 0.9;">Tee times are now available for your requested date</p>
+        </div>
+
+        <p class="greeting">We're pleased to inform you that tee times have become available for <strong>{requested_date}</strong> at <strong>{course_name}</strong>.</p>
+
+        <div class="info-box">
+            <h3><span class="emoji">📋</span>Your Waitlist Request</h3>
+            <p><strong>Date:</strong> {requested_date}</p>
+            <p><strong>Players:</strong> {players}</p>
+            <p><strong>Request ID:</strong> {waitlist_item.get('request_id', 'N/A')}</p>
+        </div>
+    """
+
+    if available_times:
+        html += """
+        <div class="links-box">
+            <h3><span class="emoji">⛳</span>Available Tee Times</h3>
+            <table class="tee-table" style="width: 100%; margin-top: 15px;">
+                <thead><tr><th>Time</th><th>Availability</th></tr></thead>
+                <tbody>
+        """
+        for time_slot in available_times:
+            html += f"""
+                <tr>
+                    <td><strong>{time_slot}</strong></td>
+                    <td><span class="status-badge">✓ Available</span></td>
+                </tr>
+            """
+        html += "</tbody></table></div>"
+
+    if custom_message:
+        html += f"""
+        <div class="info-box">
+            <h3><span class="emoji">💬</span>Message from the Club</h3>
+            <p>{custom_message}</p>
+        </div>
+        """
+
+    html += f"""
+        <div style="text-align: center; margin: 30px 0;">
+            <p style="color: #666; margin-bottom: 15px;">To secure your tee time, please reply to this email or contact us directly.</p>
+            <p><strong>Email:</strong> <a href="mailto:{FROM_EMAIL}" style="color: #003B7C;">{FROM_EMAIL}</a></p>
+        </div>
+    """
+
+    html += get_email_footer(course_name, FROM_EMAIL)
+    return html
+
+
+# ============================================================================
+# ENHANCED ANALYTICS - Lead Times, Inquiry Frequency, Course Popularity
+# ============================================================================
+
+@app.route('/api/analytics/lead-times', methods=['GET'])
+def api_analytics_lead_times():
+    """Get booking lead time analytics"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'No database connection'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT
+                date - DATE(created_at) as lead_days,
+                COUNT(*) as booking_count,
+                AVG(total) as avg_revenue,
+                AVG(players) as avg_players
+            FROM bookings
+            WHERE date IS NOT NULL AND created_at IS NOT NULL
+            GROUP BY lead_days
+            ORDER BY lead_days
+        """)
+        lead_time_distribution = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT
+                AVG(date - DATE(created_at)) as avg_lead_days,
+                MIN(date - DATE(created_at)) as min_lead_days,
+                MAX(date - DATE(created_at)) as max_lead_days,
+                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY date - DATE(created_at)) as median_lead_days
+            FROM bookings
+            WHERE date IS NOT NULL AND created_at IS NOT NULL AND date >= DATE(created_at)
+        """)
+        summary = cursor.fetchone()
+
+        cursor.execute("""
+            SELECT
+                CASE
+                    WHEN date - DATE(created_at) <= 1 THEN 'same_day_or_next'
+                    WHEN date - DATE(created_at) <= 7 THEN 'within_week'
+                    WHEN date - DATE(created_at) <= 30 THEN 'within_month'
+                    ELSE 'advance_booking'
+                END as category,
+                COUNT(*) as count,
+                SUM(total) as total_revenue
+            FROM bookings
+            WHERE date IS NOT NULL AND created_at IS NOT NULL
+            GROUP BY category
+        """)
+        categories = cursor.fetchall()
+
+        cursor.close()
+
+        distribution = []
+        for row in lead_time_distribution:
+            row_dict = dict(row)
+            for key in ['avg_revenue', 'avg_players']:
+                if row_dict.get(key):
+                    row_dict[key] = float(row_dict[key])
+            distribution.append(row_dict)
+
+        summary_dict = dict(summary) if summary else {}
+        for key in summary_dict:
+            if summary_dict[key] is not None:
+                summary_dict[key] = float(summary_dict[key])
+
+        return jsonify({
+            'success': True,
+            'summary': summary_dict,
+            'distribution': distribution,
+            'categories': [dict(c) for c in categories]
+        })
+    except Exception as e:
+        logging.error(f"❌ Lead times analytics error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+@app.route('/api/analytics/inquiry-frequency', methods=['GET'])
+def api_analytics_inquiry_frequency():
+    """Get customer inquiry frequency metrics for targeted marketing"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'No database connection'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT
+                guest_email,
+                COUNT(*) as inquiry_count,
+                COUNT(CASE WHEN status = 'confirmed' THEN 1 END) as confirmed_count,
+                COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled_count,
+                MIN(created_at) as first_inquiry,
+                MAX(created_at) as last_inquiry,
+                SUM(CASE WHEN status = 'confirmed' THEN total ELSE 0 END) as total_revenue,
+                AVG(players) as avg_party_size
+            FROM bookings
+            GROUP BY guest_email
+            ORDER BY inquiry_count DESC
+        """)
+        customer_frequency = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT
+                DATE_TRUNC('week', created_at) as week,
+                COUNT(*) as inquiries,
+                COUNT(DISTINCT guest_email) as unique_customers
+            FROM bookings
+            WHERE created_at >= NOW() - INTERVAL '12 weeks'
+            GROUP BY week
+            ORDER BY week
+        """)
+        weekly_trend = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT
+                CASE
+                    WHEN COUNT(*) = 1 THEN 'one_time'
+                    WHEN COUNT(*) BETWEEN 2 AND 3 THEN 'occasional'
+                    WHEN COUNT(*) BETWEEN 4 AND 6 THEN 'regular'
+                    ELSE 'frequent'
+                END as frequency_tier,
+                COUNT(DISTINCT guest_email) as customer_count
+            FROM bookings
+            GROUP BY guest_email
+        """)
+
+        cursor.execute("""
+            SELECT frequency_tier, COUNT(*) as customer_count FROM (
+                SELECT
+                    guest_email,
+                    CASE
+                        WHEN COUNT(*) = 1 THEN 'one_time'
+                        WHEN COUNT(*) BETWEEN 2 AND 3 THEN 'occasional'
+                        WHEN COUNT(*) BETWEEN 4 AND 6 THEN 'regular'
+                        ELSE 'frequent'
+                    END as frequency_tier
+                FROM bookings
+                GROUP BY guest_email
+            ) sub
+            GROUP BY frequency_tier
+        """)
+        frequency_tiers = cursor.fetchall()
+
+        cursor.close()
+
+        customers = []
+        for row in customer_frequency:
+            row_dict = dict(row)
+            for field in ['first_inquiry', 'last_inquiry']:
+                if row_dict.get(field) and hasattr(row_dict[field], 'strftime'):
+                    row_dict[field] = row_dict[field].strftime('%Y-%m-%d %H:%M:%S')
+            if row_dict.get('total_revenue'):
+                row_dict['total_revenue'] = float(row_dict['total_revenue'])
+            if row_dict.get('avg_party_size'):
+                row_dict['avg_party_size'] = float(row_dict['avg_party_size'])
+            customers.append(row_dict)
+
+        weekly = []
+        for row in weekly_trend:
+            row_dict = dict(row)
+            if row_dict.get('week') and hasattr(row_dict['week'], 'strftime'):
+                row_dict['week'] = row_dict['week'].strftime('%Y-%m-%d')
+            weekly.append(row_dict)
+
+        return jsonify({
+            'success': True,
+            'customers': customers,
+            'weekly_trend': weekly,
+            'frequency_tiers': [dict(t) for t in frequency_tiers]
+        })
+    except Exception as e:
+        logging.error(f"❌ Inquiry frequency analytics error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+@app.route('/api/analytics/course-popularity', methods=['GET'])
+def api_analytics_course_popularity():
+    """Get golf course popularity breakdown (requests, revenue, conversion rates)"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'No database connection'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT
+                COALESCE(club, 'unknown') as course_id,
+                COALESCE(club_name, 'Unknown Course') as course_name,
+                COUNT(*) as total_requests,
+                COUNT(CASE WHEN status = 'confirmed' THEN 1 END) as confirmed_bookings,
+                COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled_bookings,
+                SUM(CASE WHEN status = 'confirmed' THEN total ELSE 0 END) as total_revenue,
+                AVG(CASE WHEN status = 'confirmed' THEN total END) as avg_booking_value,
+                SUM(CASE WHEN status = 'confirmed' THEN players ELSE 0 END) as total_players,
+                AVG(players) as avg_party_size,
+                ROUND(100.0 * COUNT(CASE WHEN status = 'confirmed' THEN 1 END) / NULLIF(COUNT(*), 0), 2) as conversion_rate
+            FROM bookings
+            GROUP BY club, club_name
+            ORDER BY total_revenue DESC NULLS LAST
+        """)
+        course_stats = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT
+                COALESCE(club, 'unknown') as course_id,
+                DATE_TRUNC('month', created_at) as month,
+                COUNT(*) as bookings,
+                SUM(CASE WHEN status = 'confirmed' THEN total ELSE 0 END) as revenue
+            FROM bookings
+            WHERE created_at >= NOW() - INTERVAL '6 months'
+            GROUP BY club, month
+            ORDER BY club, month
+        """)
+        monthly_trend = cursor.fetchall()
+
+        cursor.close()
+
+        courses = []
+        for row in course_stats:
+            row_dict = dict(row)
+            for field in ['total_revenue', 'avg_booking_value', 'avg_party_size', 'conversion_rate']:
+                if row_dict.get(field) is not None:
+                    row_dict[field] = float(row_dict[field])
+            courses.append(row_dict)
+
+        trend = []
+        for row in monthly_trend:
+            row_dict = dict(row)
+            if row_dict.get('month') and hasattr(row_dict['month'], 'strftime'):
+                row_dict['month'] = row_dict['month'].strftime('%Y-%m')
+            if row_dict.get('revenue'):
+                row_dict['revenue'] = float(row_dict['revenue'])
+            trend.append(row_dict)
+
+        return jsonify({
+            'success': True,
+            'courses': courses,
+            'monthly_trend': trend
+        })
+    except Exception as e:
+        logging.error(f"❌ Course popularity analytics error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+# ============================================================================
+# MARKETING SEGMENTATION - Customer Segments for Campaigns
+# ============================================================================
+
+@app.route('/api/marketing/segments', methods=['GET'])
+def api_marketing_segments():
+    """Get marketing segments: frequent non-bookers, repeat inquirers, high-value customers"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'No database connection'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT
+                guest_email,
+                COUNT(*) as inquiry_count,
+                0 as confirmed_count,
+                MAX(created_at) as last_activity
+            FROM bookings
+            WHERE status != 'confirmed'
+            GROUP BY guest_email
+            HAVING COUNT(*) >= 2 AND COUNT(CASE WHEN status = 'confirmed' THEN 1 END) = 0
+            ORDER BY inquiry_count DESC
+            LIMIT 100
+        """)
+        frequent_non_bookers = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT
+                guest_email,
+                COUNT(*) as total_inquiries,
+                COUNT(CASE WHEN status = 'confirmed' THEN 1 END) as bookings,
+                SUM(CASE WHEN status = 'confirmed' THEN total ELSE 0 END) as total_spent,
+                MAX(created_at) as last_activity
+            FROM bookings
+            GROUP BY guest_email
+            HAVING COUNT(*) >= 3
+            ORDER BY total_inquiries DESC
+            LIMIT 100
+        """)
+        repeat_inquirers = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT
+                guest_email,
+                COUNT(CASE WHEN status = 'confirmed' THEN 1 END) as confirmed_bookings,
+                SUM(CASE WHEN status = 'confirmed' THEN total ELSE 0 END) as total_revenue,
+                AVG(CASE WHEN status = 'confirmed' THEN total END) as avg_booking_value,
+                SUM(CASE WHEN status = 'confirmed' THEN players ELSE 0 END) as total_players,
+                MAX(created_at) as last_booking
+            FROM bookings
+            GROUP BY guest_email
+            HAVING SUM(CASE WHEN status = 'confirmed' THEN total ELSE 0 END) >= 1000
+            ORDER BY total_revenue DESC
+            LIMIT 100
+        """)
+        high_value_customers = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT
+                guest_email,
+                COUNT(*) as booking_count,
+                MAX(created_at) as last_activity,
+                AVG(players) as avg_party_size
+            FROM bookings
+            WHERE is_corporate = true OR company_name IS NOT NULL
+            GROUP BY guest_email
+            ORDER BY booking_count DESC
+            LIMIT 100
+        """)
+        corporate_accounts = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT
+                guest_email,
+                MAX(created_at) as last_activity,
+                COUNT(*) as past_bookings,
+                SUM(CASE WHEN status = 'confirmed' THEN total ELSE 0 END) as historical_revenue
+            FROM bookings
+            GROUP BY guest_email
+            HAVING MAX(created_at) < NOW() - INTERVAL '90 days'
+            ORDER BY historical_revenue DESC
+            LIMIT 100
+        """)
+        lapsed_customers = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT
+                guest_email,
+                MIN(created_at) as first_inquiry,
+                COUNT(*) as inquiry_count,
+                status
+            FROM bookings
+            WHERE created_at >= NOW() - INTERVAL '30 days'
+            GROUP BY guest_email, status
+            HAVING COUNT(*) = 1 AND MIN(created_at) >= NOW() - INTERVAL '30 days'
+            ORDER BY first_inquiry DESC
+            LIMIT 100
+        """)
+        new_prospects = cursor.fetchall()
+
+        cursor.close()
+
+        def process_segment(segment_data):
+            result = []
+            for row in segment_data:
+                row_dict = dict(row)
+                for field in ['last_activity', 'last_booking', 'first_inquiry']:
+                    if row_dict.get(field) and hasattr(row_dict[field], 'strftime'):
+                        row_dict[field] = row_dict[field].strftime('%Y-%m-%d %H:%M:%S')
+                for field in ['total_revenue', 'total_spent', 'avg_booking_value', 'historical_revenue', 'avg_party_size']:
+                    if row_dict.get(field) is not None:
+                        row_dict[field] = float(row_dict[field])
+                result.append(row_dict)
+            return result
+
+        return jsonify({
+            'success': True,
+            'segments': {
+                'frequent_non_bookers': {
+                    'description': 'Customers who inquire frequently but rarely or never book',
+                    'count': len(frequent_non_bookers),
+                    'customers': process_segment(frequent_non_bookers)
+                },
+                'repeat_inquirers': {
+                    'description': 'Customers with 3+ inquiries - engaged but may need nurturing',
+                    'count': len(repeat_inquirers),
+                    'customers': process_segment(repeat_inquirers)
+                },
+                'high_value_customers': {
+                    'description': 'Customers with €1000+ in confirmed bookings',
+                    'count': len(high_value_customers),
+                    'customers': process_segment(high_value_customers)
+                },
+                'corporate_accounts': {
+                    'description': 'Business/corporate bookings',
+                    'count': len(corporate_accounts),
+                    'customers': process_segment(corporate_accounts)
+                },
+                'lapsed_customers': {
+                    'description': 'Previously active customers with no activity in 90+ days',
+                    'count': len(lapsed_customers),
+                    'customers': process_segment(lapsed_customers)
+                },
+                'new_prospects': {
+                    'description': 'New inquiries in the last 30 days',
+                    'count': len(new_prospects),
+                    'customers': process_segment(new_prospects)
+                }
+            }
+        })
+    except Exception as e:
+        logging.error(f"❌ Marketing segments error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
+@app.route('/api/marketing/segment/<segment_name>/export', methods=['GET'])
+def api_export_segment(segment_name):
+    """Export a specific marketing segment as CSV for email campaigns"""
+    try:
+        import csv
+        import io
+        from flask import Response
+
+        segments_response = api_marketing_segments()
+        segments_data = segments_response.get_json()
+
+        if not segments_data.get('success'):
+            return jsonify({'success': False, 'error': 'Failed to fetch segments'}), 500
+
+        if segment_name not in segments_data['segments']:
+            return jsonify({'success': False, 'error': f'Unknown segment: {segment_name}'}), 404
+
+        segment = segments_data['segments'][segment_name]
+        customers = segment['customers']
+
+        if not customers:
+            return jsonify({'success': False, 'error': 'No customers in this segment'}), 404
+
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=customers[0].keys())
+        writer.writeheader()
+        writer.writerows(customers)
+
+        csv_content = output.getvalue()
+
+        return Response(
+            csv_content,
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename={segment_name}_{datetime.now().strftime("%Y%m%d")}.csv',
+                'X-Segment-Count': str(len(customers))
+            }
+        )
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

@@ -58,3 +58,51 @@ $$ language 'plpgsql';
 
 CREATE TRIGGER update_bookings_updated_at BEFORE UPDATE ON bookings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Waitlist table for tee time requests
+CREATE TABLE IF NOT EXISTS waitlist (
+    id SERIAL PRIMARY KEY,
+    request_id VARCHAR(255) UNIQUE NOT NULL,
+    guest_email VARCHAR(255) NOT NULL,
+    guest_name VARCHAR(255),
+    requested_date DATE NOT NULL,
+    preferred_time_start TIME,
+    preferred_time_end TIME,
+    players INTEGER NOT NULL DEFAULT 4,
+    flexibility VARCHAR(50) DEFAULT 'flexible', -- strict, flexible, very_flexible
+    priority INTEGER DEFAULT 0, -- higher = more priority
+    status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, notified, converted, expired, cancelled
+    notes TEXT,
+    notified_at TIMESTAMP,
+    converted_booking_id VARCHAR(255),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP,
+    club VARCHAR(255),
+    CONSTRAINT valid_waitlist_status CHECK (status IN ('pending', 'notified', 'converted', 'expired', 'cancelled'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist(guest_email);
+CREATE INDEX IF NOT EXISTS idx_waitlist_date ON waitlist(requested_date);
+CREATE INDEX IF NOT EXISTS idx_waitlist_status ON waitlist(status);
+CREATE INDEX IF NOT EXISTS idx_waitlist_created_at ON waitlist(created_at DESC);
+
+CREATE TRIGGER update_waitlist_updated_at BEFORE UPDATE ON waitlist
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Export logs for notify platform integration
+CREATE TABLE IF NOT EXISTS export_logs (
+    id SERIAL PRIMARY KEY,
+    export_id VARCHAR(255) UNIQUE NOT NULL,
+    export_type VARCHAR(50) NOT NULL, -- json, csv, api
+    destination VARCHAR(500),
+    records_exported INTEGER DEFAULT 0,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, completed, failed
+    error_message TEXT,
+    filters JSONB, -- store filter criteria used
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_export_logs_type ON export_logs(export_type);
+CREATE INDEX IF NOT EXISTS idx_export_logs_created_at ON export_logs(created_at DESC);
