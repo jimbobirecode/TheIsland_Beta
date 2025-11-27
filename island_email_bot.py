@@ -1049,8 +1049,10 @@ def format_confirmation_email(booking_data: Dict) -> str:
     return html
 
 
-def format_no_availability_email(player_count: int) -> str:
-    """Generate email when no availability found"""
+def format_no_availability_email(player_count: int, guest_email: str = None, dates: list = None, preferred_time: str = None) -> str:
+    """Generate email when no availability found - includes waitlist opt-in"""
+    from urllib.parse import quote
+
     html = get_email_header()
 
     html += f"""
@@ -1066,7 +1068,56 @@ def format_no_availability_email(player_count: int) -> str:
                 Unfortunately, we do not have availability for <strong>{player_count} player(s)</strong> on your requested dates.
             </p>
         </div>
+    """
 
+    # Add Waitlist Opt-In Section
+    if dates and guest_email:
+        dates_str = ', '.join(dates) if isinstance(dates, list) else str(dates)
+        time_str = preferred_time or "Flexible"
+
+        # Create mailto link for waitlist opt-in
+        waitlist_subject = quote(f"JOIN WAITLIST - {dates_str} - {time_str} - {player_count} players")
+        waitlist_body = quote(f"""I would like to join the waitlist for:
+
+Date(s): {dates_str}
+Preferred Time: {time_str}
+Players: {player_count}
+
+Please notify me if availability becomes available.
+
+Thank you.""")
+
+        waitlist_mailto = f"mailto:{SENDGRID_FROM_EMAIL}?subject={waitlist_subject}&body={waitlist_body}"
+
+        html += f"""
+        <div style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border-radius: 12px; padding: 25px; margin: 25px 0; text-align: center;">
+            <h3 style="color: #ffffff; margin: 0 0 15px 0; font-size: 20px;">
+                <span style="margin-right: 8px;">📋</span>Join Our Waitlist
+            </h3>
+            <p style="color: #dbeafe; margin: 0 0 20px 0; font-size: 15px;">
+                Click below to be notified if availability opens up for your requested date.
+                We'll automatically check every few hours and email you as soon as a tee time becomes available.
+            </p>
+            <div style="background: #ffffff; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                <p style="color: #1e3a8a; margin: 0; font-size: 14px;">
+                    <strong>Date:</strong> {dates_str}<br>
+                    <strong>Time:</strong> {time_str}<br>
+                    <strong>Players:</strong> {player_count}
+                </p>
+            </div>
+            <a href="{waitlist_mailto}"
+               style="display: inline-block; background: #10b981; color: white; padding: 14px 35px;
+                      border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 16px;
+                      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);">
+                Join Waitlist - Get Notified
+            </a>
+            <p style="color: #93c5fd; margin: 15px 0 0 0; font-size: 12px;">
+                You'll receive an email as soon as we find availability
+            </p>
+        </div>
+        """
+
+    html += f"""
         <div class="info-box">
             <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
                 📞 Please Contact Us
@@ -1354,7 +1405,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                     else:
                         # No availability
                         logging.info(f"   ⚠️  No availability found")
-                        html_email = format_no_availability_email(players)
+                        html_email = format_no_availability_email(players, guest_email=sender_email, dates=dates)
                         subject_line = "Tee Time Availability - The Island Golf Club"
                         send_email_sendgrid(sender_email, subject_line, html_email)
 
@@ -1585,6 +1636,221 @@ def parse_email_simple(subject: str, body: str) -> Dict:
 
 
 # ============================================================================
+# WAITLIST FUNCTIONS
+# ============================================================================
+
+def is_waitlist_optin_email(subject: str) -> bool:
+    """Detect if this is a waitlist opt-in email"""
+    subject_upper = subject.upper() if subject else ""
+    return "JOIN WAITLIST" in subject_upper
+
+
+def parse_waitlist_optin_subject(subject: str) -> dict:
+    """Parse waitlist details from subject line
+    Expected format: JOIN WAITLIST - 2025-12-15 - 10:00 AM - 4 players
+    """
+    result = {
+        'dates': [],
+        'preferred_time': None,
+        'players': 4
+    }
+
+    if not subject:
+        return result
+
+    # Extract dates (YYYY-MM-DD format)
+    date_matches = re.findall(r'(\d{4}-\d{2}-\d{2})', subject)
+    if date_matches:
+        result['dates'] = date_matches
+
+    # Extract time (various formats)
+    time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM)?)', subject, re.IGNORECASE)
+    if time_match:
+        result['preferred_time'] = time_match.group(1)
+
+    # Extract players count
+    players_match = re.search(r'(\d+)\s*players?', subject, re.IGNORECASE)
+    if players_match:
+        result['players'] = int(players_match.group(1))
+
+    return result
+
+
+def generate_waitlist_id(guest_email: str, timestamp: str) -> str:
+    """Generate unique waitlist ID"""
+    import hashlib
+    hash_input = f"{guest_email}{timestamp}"
+    hash_value = hashlib.md5(hash_input.encode()).hexdigest()[:8].upper()
+    date_str = datetime.now().strftime('%Y%m%d')
+    return f"WL-{date_str}-{hash_value}"
+
+
+def add_to_waitlist(guest_email: str, dates: list, preferred_time: str, players: int, waitlist_id: str) -> bool:
+    """Add customer to waitlist database"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            logging.error("No database connection for waitlist")
+            return False
+
+        cursor = conn.cursor()
+
+        # Get guest name from email or previous bookings
+        guest_name = guest_email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
+
+        # Use first date as requested_date
+        requested_date = dates[0] if dates else datetime.now().strftime('%Y-%m-%d')
+
+        cursor.execute("""
+            INSERT INTO waitlist (
+                waitlist_id, guest_email, guest_name, requested_date,
+                preferred_time, time_flexibility, players, golf_course,
+                status, priority, club, created_at, updated_at
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW()
+            )
+            ON CONFLICT (waitlist_id) DO NOTHING
+        """, (
+            waitlist_id,
+            guest_email,
+            guest_name,
+            requested_date,
+            preferred_time or 'Flexible',
+            'Flexible',
+            players,
+            'The Island Golf Club',
+            'Waiting',
+            5,
+            DEFAULT_COURSE_ID
+        ))
+
+        conn.commit()
+        cursor.close()
+        release_db_connection(conn)
+
+        logging.info(f"✅ Added to waitlist: {waitlist_id} for {guest_email}")
+        return True
+
+    except Exception as e:
+        logging.error(f"❌ Error adding to waitlist: {e}")
+        return False
+
+
+def send_waitlist_confirmation_email(guest_email: str, waitlist_id: str, dates: list, preferred_time: str, players: int):
+    """Send confirmation email to customer after they opt into waitlist"""
+    dates_str = ', '.join(dates) if dates else 'Your requested dates'
+    time_str = preferred_time or 'Flexible'
+
+    html = get_email_header()
+
+    html += f"""
+        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 25px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
+            <h2 style="margin: 0; font-size: 28px; font-weight: 700;">✅ Added to Waitlist</h2>
+            <p style="margin: 10px 0 0 0; opacity: 0.9;">Waitlist ID: {waitlist_id}</p>
+        </div>
+
+        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
+            Thank you for joining our waitlist at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>.
+        </p>
+
+        <div style="background: {THE_ISLAND_COLORS['light_grey']}; border-radius: 8px; padding: 20px; margin: 25px 0;">
+            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 15px 0;">
+                📋 Your Waitlist Details
+            </h3>
+            <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse: collapse;">
+                <tr>
+                    <td style="font-weight: 600; width: 40%;">Date(s):</td>
+                    <td>{dates_str}</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: 600;">Preferred Time:</td>
+                    <td>{time_str}</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: 600;">Players:</td>
+                    <td>{players}</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: 600;">Status:</td>
+                    <td><span style="background: #10b981; color: white; padding: 4px 12px; border-radius: 4px; font-size: 13px;">Active - Waiting</span></td>
+                </tr>
+            </table>
+        </div>
+
+        <div style="background: #eff6ff; border-radius: 8px; padding: 20px; margin: 25px 0;">
+            <h3 style="color: #1e40af; font-size: 16px; margin: 0 0 10px 0;">
+                🔔 What happens next?
+            </h3>
+            <ul style="margin: 0; padding-left: 20px; color: #1e40af;">
+                <li style="margin-bottom: 8px;">We'll check for availability every few hours</li>
+                <li style="margin-bottom: 8px;">As soon as a tee time opens up, we'll email you immediately</li>
+                <li style="margin-bottom: 8px;">You can then book your preferred time through our normal booking process</li>
+            </ul>
+        </div>
+
+        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8;">
+            If you have any questions or need to update your waitlist request, please contact us at
+            <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {THE_ISLAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a>.
+        </p>
+    """
+
+    html += get_email_footer()
+
+    send_email_sendgrid(guest_email, "Waitlist Confirmation - The Island Golf Club", html)
+    logging.info(f"✅ Waitlist confirmation email sent to {guest_email}")
+
+
+def process_waitlist_optin(from_email: str, subject: str, body: str, message_id: str) -> tuple:
+    """Process a waitlist opt-in email and add customer to waitlist"""
+
+    # Extract clean email
+    if '<' in from_email:
+        guest_email = from_email.split('<')[1].strip('>')
+    else:
+        guest_email = from_email
+
+    # Parse waitlist details from subject
+    parsed = parse_waitlist_optin_subject(subject)
+
+    # Also try to extract from body if subject doesn't have dates
+    if not parsed['dates']:
+        body_dates = re.findall(r'(\d{4}-\d{2}-\d{2})', body)
+        if body_dates:
+            parsed['dates'] = body_dates
+
+    if not parsed['preferred_time']:
+        body_time = re.search(r'Preferred Time:\s*(.+)', body)
+        if body_time:
+            parsed['preferred_time'] = body_time.group(1).strip()
+
+    # Generate waitlist ID
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    waitlist_id = generate_waitlist_id(guest_email, timestamp)
+
+    # Add to waitlist
+    success = add_to_waitlist(
+        guest_email,
+        parsed['dates'],
+        parsed['preferred_time'],
+        parsed['players'],
+        waitlist_id
+    )
+
+    if success:
+        # Send confirmation email in background
+        thread = Thread(
+            target=send_waitlist_confirmation_email,
+            args=(guest_email, waitlist_id, parsed['dates'], parsed['preferred_time'], parsed['players'])
+        )
+        thread.daemon = True
+        thread.start()
+
+        return ('waitlist_added', waitlist_id)
+    else:
+        return ('waitlist_error', None)
+
+
+# ============================================================================
 # WEBHOOK ENDPOINTS
 # ============================================================================
 
@@ -1806,6 +2072,21 @@ def handle_inbound_email():
                     return jsonify({'status': 'reply_received', 'booking_id': booking_id}), 200
 
             logging.info("   Reply but no matching booking found - treating as new inquiry")
+
+        # Case 2.5: WAITLIST OPT-IN (customer clicked "Join Waitlist" button)
+        if is_waitlist_optin_email(subject):
+            start_time = time.time()
+            logging.info("📋 DETECTED: WAITLIST OPT-IN")
+
+            status, waitlist_id = process_waitlist_optin(from_email, subject, body, message_id)
+
+            elapsed = time.time() - start_time
+            if status == 'waitlist_added':
+                logging.info(f"✅ Customer added to waitlist: {waitlist_id} (responded in {elapsed:.2f}s)")
+                return jsonify({'status': 'waitlist_added', 'waitlist_id': waitlist_id}), 200
+            else:
+                logging.error(f"❌ Failed to add to waitlist (responded in {elapsed:.2f}s)")
+                return jsonify({'status': 'waitlist_error'}), 500
 
         # Case 3: NEW INQUIRY (default)
         logging.info("📧 DETECTED: NEW INQUIRY")
