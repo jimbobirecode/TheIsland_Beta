@@ -58,3 +58,50 @@ $$ language 'plpgsql';
 
 CREATE TRIGGER update_bookings_updated_at BEFORE UPDATE ON bookings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Waitlist table for tee time requests (matches dashboard schema)
+CREATE TABLE IF NOT EXISTS waitlist (
+    id SERIAL PRIMARY KEY,
+    waitlist_id VARCHAR(50) UNIQUE NOT NULL,
+    guest_email VARCHAR(255) NOT NULL,
+    guest_name VARCHAR(255),
+    requested_date DATE NOT NULL,
+    preferred_time VARCHAR(50),
+    time_flexibility VARCHAR(50) DEFAULT 'Flexible',
+    players INTEGER DEFAULT 1,
+    golf_course VARCHAR(255),
+    status VARCHAR(50) DEFAULT 'Waiting',
+    priority INTEGER DEFAULT 5,
+    notes TEXT,
+    notification_sent BOOLEAN DEFAULT FALSE,
+    notification_sent_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    club VARCHAR(100) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist(guest_email);
+CREATE INDEX IF NOT EXISTS idx_waitlist_date ON waitlist(requested_date);
+CREATE INDEX IF NOT EXISTS idx_waitlist_status ON waitlist(status);
+CREATE INDEX IF NOT EXISTS idx_waitlist_created_at ON waitlist(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_waitlist_club ON waitlist(club);
+
+CREATE TRIGGER update_waitlist_updated_at BEFORE UPDATE ON waitlist
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Export logs for notify platform integration
+CREATE TABLE IF NOT EXISTS export_logs (
+    id SERIAL PRIMARY KEY,
+    export_id VARCHAR(255) UNIQUE NOT NULL,
+    export_type VARCHAR(50) NOT NULL, -- json, csv, api
+    destination VARCHAR(500),
+    records_exported INTEGER DEFAULT 0,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, completed, failed
+    error_message TEXT,
+    filters JSONB, -- store filter criteria used
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_export_logs_type ON export_logs(export_type);
+CREATE INDEX IF NOT EXISTS idx_export_logs_created_at ON export_logs(created_at DESC);
