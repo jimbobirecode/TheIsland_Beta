@@ -1087,7 +1087,7 @@ Please notify me if availability becomes available.
 
 Thank you.""")
 
-        waitlist_mailto = f"mailto:{SENDGRID_FROM_EMAIL}?subject={waitlist_subject}&body={waitlist_body}"
+        waitlist_mailto = f"mailto:{FROM_EMAIL}?subject={waitlist_subject}&body={waitlist_body}"
 
         html += f"""
         <div style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border-radius: 12px; padding: 25px; margin: 25px 0; text-align: center;">
