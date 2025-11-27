@@ -2776,6 +2776,10 @@ def format_availability_response(parsed, api_response: dict, guest_email: str, b
         if parsed.dates.end_date and parsed.dates.end_date != parsed.dates.start_date:
             fallback_dates.append(parsed.dates.end_date.strftime('%Y-%m-%d'))
         original_dates = fallback_dates
+        logging.info(f"📋 Waitlist: Using fallback dates from parsed inquiry: {original_dates}")
+
+    # Debug logging for waitlist opt-in
+    logging.info(f"📋 Waitlist debug: original_dates={original_dates}, guest_email={guest_email}")
 
     if not api_response.get("success"):
         subject = "Tee Time Availability Check"
