@@ -60,6 +60,18 @@ services:
       - key: DASHBOARD_PASSWORD
         sync: false
 
+  # Waitlist Availability Checker (Cron Job)
+  - type: cron
+    name: theisland-waitlist-checker
+    env: python
+    region: oregon
+    schedule: "0 */4 * * *"  # Every 4 hours at minute 0
+    buildCommand: pip install -r requirements.txt
+    startCommand: curl -X POST https://theisland-email-bot.onrender.com/api/waitlist/check-availability
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+
 databases:
   - name: theisland-db
     plan: starter
