@@ -46,14 +46,14 @@ def get_club_color(club_id: str) -> str:
     Returns hex color code for club branding.
     """
     club_colors = {
-        'island': '#2563eb',  # Island Golf Club blue
-        'islandgolfclub': '#2563eb',
-        'island-golf-club': '#2563eb',
-        'island_golf_club': '#2563eb',
+        'island': '#10b981',  # Golf Club emerald green
+        'islandgolfclub': '#10b981',
+        'island-golf-club': '#10b981',
+        'island_golf_club': '#10b981',
     }
 
     club_id_lower = club_id.lower() if club_id else ''
-    return club_colors.get(club_id_lower, '#2563eb')  # Default Island blue
+    return club_colors.get(club_id_lower, '#10b981')  # Default emerald green
 
 def get_club_info(club_id: str) -> dict:
     """
@@ -244,12 +244,12 @@ def get_status_color(status: str) -> str:
 def generate_status_progress_bar(current_status: str) -> str:
     """Generate a linear status progress bar showing booking workflow"""
 
-    # Define the workflow stages - Island colors
+    # Define the workflow stages
     stages = [
-        {'name': 'Inquiry', 'color': '#60a5fa'},
-        {'name': 'Requested', 'color': '#eab308'},
-        {'name': 'Confirmed', 'color': '#22c55e'},
-        {'name': 'Booked', 'color': '#10b981'}
+        {'name': 'Inquiry', 'color': '#3b82f6'},   # Bright Blue (inquiry)
+        {'name': 'Requested', 'color': '#fbbf24'},  # Golden Yellow (requested)
+        {'name': 'Confirmed', 'color': '#a78bfa'},  # Soft Purple (confirmed)
+        {'name': 'Booked', 'color': '#10b981'}      # Emerald Green (primary brand)
     ]
 
     # Handle special cases
@@ -263,7 +263,7 @@ def generate_status_progress_bar(current_status: str) -> str:
     if is_rejected or is_cancelled:
         status_color = '#ef4444' if is_rejected else '#64748b'
         return f"""
-        <div style='background: #1e3a8a; padding: 1rem; border-radius: 8px; border: 2px solid #3b82f6;'>
+        <div style='background: #059669; padding: 1rem; border-radius: 8px; border: 2px solid #3b82f6;'>
             <div style='display: flex; align-items: center; justify-content: center; gap: 0.75rem;'>
                 <div style='width: 12px; height: 12px; border-radius: 50%; background: {status_color};'></div>
                 <span style='color: {status_color}; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px;'>{current_status}</span>
@@ -276,19 +276,19 @@ def generate_status_progress_bar(current_status: str) -> str:
 
     # Generate HTML
     html = """
-    <div style='background: #1e3a8a; padding: 1.25rem; border-radius: 8px; border: 2px solid #3b82f6;'>
+    <div style='background: #059669; padding: 1.25rem; border-radius: 8px; border: 2px solid #3b82f6;'>
         <div style='display: flex; align-items: center; justify-content: space-between; position: relative;'>
     """
 
     # Add connecting line
     html += """
-        <div style='position: absolute; top: 0.75rem; left: 2rem; right: 2rem; height: 3px; background: #1e40af; z-index: 1;'></div>
+        <div style='position: absolute; top: 0.75rem; left: 2rem; right: 2rem; height: 3px; background: #1e293b; z-index: 1;'></div>
     """
 
     # Add progress line (only up to current stage)
     progress_width = (current_index / (len(stages) - 1)) * 100 if len(stages) > 1 else 0
     html += f"""
-        <div style='position: absolute; top: 0.75rem; left: 2rem; width: calc({progress_width}% - 2rem); height: 3px; background: linear-gradient(90deg, #60a5fa, #10b981); z-index: 2;'></div>
+        <div style='position: absolute; top: 0.75rem; left: 2rem; width: calc({progress_width}% - 2rem); height: 3px; background: linear-gradient(90deg, #3b82f6, #10b981); z-index: 2;'></div>
     """
 
     # Add stage nodes
@@ -296,9 +296,9 @@ def generate_status_progress_bar(current_status: str) -> str:
         is_active = i <= current_index
         is_current = i == current_index
 
-        bg_color = stage['color'] if is_active else '#1e40af'
+        bg_color = stage['color'] if is_active else '#1e293b'
         text_color = '#f9fafb' if is_active else '#64748b'
-        border_color = stage['color'] if is_current else ('#3b82f6' if is_active else '#1e40af')
+        border_color = stage['color'] if is_current else ('#3b82f6' if is_active else '#1e293b')
         box_shadow = '0 0 0 4px rgba(59, 130, 246, 0.4)' if is_current else 'none'
 
         html += f"""
@@ -376,12 +376,12 @@ st.set_page_config(
 )
 
 # ========================================
-# STYLING - ISLAND GOLF CLUB BRAND
+# STYLING - BRAND COLORS
 # ========================================
 st.markdown("""
     <style>
     .main {
-        background: #0f172a;
+        background: #0a0e1a;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
     }
 
@@ -389,9 +389,9 @@ st.markdown("""
         background: #1e293b;
         border-right: 1px solid #3b82f6;
     }
-    
+
     .metric-card {
-        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
         padding: 1.75rem;
         border-radius: 12px;
         border: 2px solid #3b82f6;
@@ -413,8 +413,8 @@ st.markdown("""
     }
 
     .metric-card:hover {
-        border-color: #60a5fa;
-        box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+        border-color: #3b82f6;
+        box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
         transform: translateY(-2px);
     }
 
@@ -474,7 +474,7 @@ st.markdown("""
         display: inline-flex;
         align-items: center;
         gap: 0.625rem;
-        background: #1e3a8a;
+        background: #059669;
         padding: 0.5rem 1rem;
         border-radius: 8px;
         border: 2px solid #3b82f6;
@@ -498,19 +498,19 @@ st.markdown("""
 
     .status-inquiry {
         background: rgba(96, 165, 250, 0.2);
-        color: #60a5fa;
+        color: #3b82f6;
         border: 2px solid rgba(96, 165, 250, 0.3);
     }
 
     .status-requested {
         background: rgba(234, 179, 8, 0.2);
-        color: #eab308;
+        color: #fbbf24;
         border: 2px solid rgba(234, 179, 8, 0.3);
     }
 
     .status-confirmed {
         background: rgba(34, 197, 94, 0.2);
-        color: #22c55e;
+        color: #a78bfa;
         border: 2px solid rgba(34, 197, 94, 0.3);
     }
 
@@ -533,7 +533,7 @@ st.markdown("""
     }
     
     .stButton > button {
-        background: #2563eb;
+        background: #10b981;
         color: white;
         border: none;
         padding: 0.625rem 1.25rem;
@@ -573,7 +573,7 @@ st.markdown("""
     }
 
     .user-badge {
-        background: #2563eb;
+        background: #10b981;
         color: white;
         padding: 0.5rem 1rem;
         border-radius: 6px;
@@ -606,7 +606,7 @@ st.markdown("""
     }
     
     .streamlit-expanderHeader {
-        background: #1e3a8a !important;
+        background: #059669 !important;
         border-radius: 8px !important;
         border: 2px solid #3b82f6 !important;
         font-weight: 600 !important;
@@ -616,8 +616,8 @@ st.markdown("""
     }
 
     .streamlit-expanderHeader:hover {
-        border-color: #60a5fa !important;
-        background: #1e40af !important;
+        border-color: #3b82f6 !important;
+        background: #1e293b !important;
     }
 
     .streamlit-expanderContent {
@@ -644,13 +644,13 @@ st.markdown("""
     }
     
     .stMultiSelect > div > div {
-        background: #1e3a8a !important;
+        background: #059669 !important;
         border: 2px solid #3b82f6 !important;
         border-radius: 6px !important;
     }
 
     .stDateInput > div > div {
-        background: #1e3a8a !important;
+        background: #059669 !important;
         border: 2px solid #3b82f6 !important;
         border-radius: 6px !important;
     }
@@ -672,7 +672,7 @@ if st.session_state.show_password_change:
             max-width: 500px;
             margin: 100px auto;
             padding: 2.5rem;
-            background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
             border-radius: 16px;
             border: 1px solid rgba(59, 130, 246, 0.3);
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -1629,9 +1629,9 @@ if page == "Bookings":
     # Show active filter indicator
     if st.session_state.clicked_status_filter:
         st.markdown(f"""
-            <div style='background: #1e3a8a; border: 2px solid #3b82f6; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between;'>
+            <div style='background: #059669; border: 2px solid #3b82f6; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between;'>
                 <div style='display: flex; align-items: center; gap: 0.5rem;'>
-                    <span style='color: #60a5fa; font-weight: 600; font-size: 1rem;'>Filtering by: {st.session_state.clicked_status_filter}</span>
+                    <span style='color: #3b82f6; font-weight: 600; font-size: 1rem;'>Filtering by: {st.session_state.clicked_status_filter}</span>
                 </div>
             </div>
         """, unsafe_allow_html=True)
@@ -1753,9 +1753,9 @@ if page == "Bookings":
             current_status = 'Inquiry'
     
         stages = [
-            {'name': 'Inquiry', 'color': '#60a5fa'},
-            {'name': 'Requested', 'color': '#eab308'},
-            {'name': 'Confirmed', 'color': '#22c55e'},
+            {'name': 'Inquiry', 'color': '#3b82f6'},
+            {'name': 'Requested', 'color': '#fbbf24'},
+            {'name': 'Confirmed', 'color': '#a78bfa'},
             {'name': 'Booked', 'color': '#10b981'}
         ]
     
@@ -1771,22 +1771,22 @@ if page == "Bookings":
             # Build progress bar HTML inline
             if is_rejected or is_cancelled:
                 status_color = '#ef4444' if is_rejected else '#64748b'
-                progress_html = f"<div style='background: #1e3a8a; padding: 1rem; border-radius: 8px; border: 2px solid #3b82f6;'><div style='display: flex; align-items: center; justify-content: center; gap: 0.75rem;'><div style='width: 12px; height: 12px; border-radius: 50%; background: {status_color};'></div><span style='color: {status_color}; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px;'>{current_status}</span></div></div>"
+                progress_html = f"<div style='background: #059669; padding: 1rem; border-radius: 8px; border: 2px solid #3b82f6;'><div style='display: flex; align-items: center; justify-content: center; gap: 0.75rem;'><div style='width: 12px; height: 12px; border-radius: 50%; background: {status_color};'></div><span style='color: {status_color}; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px;'>{current_status}</span></div></div>"
             else:
                 # Build stage nodes HTML
                 stages_html = ""
                 for i, stage in enumerate(stages):
                     is_active = i <= current_index
                     is_current = i == current_index
-                    bg_color = stage['color'] if is_active else '#1e40af'
+                    bg_color = stage['color'] if is_active else '#1e293b'
                     text_color = '#f9fafb' if is_active else '#64748b'
-                    border_color = stage['color'] if is_current else ('#3b82f6' if is_active else '#1e40af')
+                    border_color = stage['color'] if is_current else ('#3b82f6' if is_active else '#1e293b')
                     box_shadow = '0 0 0 4px rgba(59, 130, 246, 0.4)' if is_current else 'none'
                     font_weight = '700' if is_current else '600'
     
                     stages_html += f"<div style='display: flex; flex-direction: column; align-items: center; z-index: 3; position: relative;'><div style='width: 1.5rem; height: 1.5rem; border-radius: 50%; background: {bg_color}; border: 3px solid {border_color}; box-shadow: {box_shadow}; transition: all 0.3s ease;'></div><div style='margin-top: 0.5rem; font-size: 0.7rem; font-weight: {font_weight}; color: {text_color}; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;'>{stage['name']}</div></div>"
     
-                progress_html = f"<div style='background: #1e3a8a; padding: 1.25rem; border-radius: 8px; border: 2px solid #3b82f6;'><div style='display: flex; align-items: center; justify-content: space-between; position: relative;'><div style='position: absolute; top: 0.75rem; left: 2rem; right: 2rem; height: 3px; background: #1e40af; z-index: 1;'></div><div style='position: absolute; top: 0.75rem; left: 2rem; width: calc({progress_width}% - 2rem); height: 3px; background: linear-gradient(90deg, #60a5fa, #10b981); z-index: 2;'></div>{stages_html}</div></div>"
+                progress_html = f"<div style='background: #059669; padding: 1.25rem; border-radius: 8px; border: 2px solid #3b82f6;'><div style='display: flex; align-items: center; justify-content: space-between; position: relative;'><div style='position: absolute; top: 0.75rem; left: 2rem; right: 2rem; height: 3px; background: #1e293b; z-index: 1;'></div><div style='position: absolute; top: 0.75rem; left: 2rem; width: calc({progress_width}% - 2rem); height: 3px; background: linear-gradient(90deg, #3b82f6, #10b981); z-index: 2;'></div>{stages_html}</div></div>"
     
             # Hotel requirement badge and dates
             hotel_required = booking.get('hotel_required', False)
@@ -1824,7 +1824,7 @@ if page == "Bookings":
                 golf_info_html = f"<div style='background: #10b981; padding: 1rem; border-radius: 8px; margin-top: 1rem;'><div style='color: #ffffff; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.75rem;'>Golf Courses & Tee Times</div><div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;'><div><div style='color: rgba(255,255,255,0.8); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;'>Courses</div><div style='color: #ffffff; font-size: 0.875rem; font-weight: 600; line-height: 1.5;'>{html.escape(courses_list)}</div></div><div><div style='color: rgba(255,255,255,0.8); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;'>Tee Times</div><div style='color: #ffffff; font-size: 0.875rem; font-weight: 600; line-height: 1.5;'>{html.escape(times_list)}</div></div></div></div>"
     
             # Build complete card HTML including progress bar and details
-            card_html = f"<div class='booking-card' style='background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; margin-bottom: 0.5rem; box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3); transition: all 0.3s ease;'><div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem;'><div style='flex: 1;'><div style='display: flex; align-items: center;'><div class='booking-id' style='margin-bottom: 0.5rem;'>{html.escape(str(booking['booking_id']))}</div>{hotel_badge}</div><div class='booking-email'>{html.escape(str(booking['guest_email']))}</div></div><div style='text-align: right;'><div class='timestamp'>REQUESTED</div><div class='timestamp-value'>{requested_time}</div></div></div><div style='margin-bottom: 1.5rem;'>{progress_html}</div><div style='height: 1px; background: linear-gradient(90deg, transparent, #3b82f6, transparent); margin: 1.5rem 0;'></div><div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 1rem;'><div><div class='data-label' style='margin-bottom: 0.5rem;'>TEE DATE</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{booking['date'].strftime('%b %d, %Y')}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>TEE TIME</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{tee_time_display}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>PLAYERS</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{booking['players']}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>TOTAL</div><div style='font-size: 1.5rem; font-weight: 700; color: #10b981;'>€{booking['total']:,.2f}</div></div></div>{golf_info_html}{hotel_dates_html}</div>"
+            card_html = f"<div class='booking-card' style='background: linear-gradient(135deg, #059669 0%, #1e293b 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; margin-bottom: 0.5rem; box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3); transition: all 0.3s ease;'><div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem;'><div style='flex: 1;'><div style='display: flex; align-items: center;'><div class='booking-id' style='margin-bottom: 0.5rem;'>{html.escape(str(booking['booking_id']))}</div>{hotel_badge}</div><div class='booking-email'>{html.escape(str(booking['guest_email']))}</div></div><div style='text-align: right;'><div class='timestamp'>REQUESTED</div><div class='timestamp-value'>{requested_time}</div></div></div><div style='margin-bottom: 1.5rem;'>{progress_html}</div><div style='height: 1px; background: linear-gradient(90deg, transparent, #3b82f6, transparent); margin: 1.5rem 0;'></div><div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 1rem;'><div><div class='data-label' style='margin-bottom: 0.5rem;'>TEE DATE</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{booking['date'].strftime('%b %d, %Y')}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>TEE TIME</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{tee_time_display}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>PLAYERS</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{booking['players']}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>TOTAL</div><div style='font-size: 1.5rem; font-weight: 700; color: #10b981;'>€{booking['total']:,.2f}</div></div></div>{golf_info_html}{hotel_dates_html}</div>"
     
             # Render the complete card
             st.markdown(card_html, unsafe_allow_html=True)
@@ -2077,7 +2077,7 @@ elif page == "Reports & Analytics":
     with metric_col1:
         total_bookings = len(analysis_df)
         st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+            <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                 <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;'>Total Bookings</div>
                 <div style='color: #f9fafb; font-size: 2.5rem; font-weight: 700;'>{total_bookings}</div>
             </div>
@@ -2086,7 +2086,7 @@ elif page == "Reports & Analytics":
     with metric_col2:
         total_revenue = analysis_df['total'].sum()
         st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+            <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                 <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;'>Total Revenue</div>
                 <div style='color: #10b981; font-size: 2.5rem; font-weight: 700;'>€{total_revenue:,.0f}</div>
             </div>
@@ -2095,7 +2095,7 @@ elif page == "Reports & Analytics":
     with metric_col3:
         avg_booking_value = analysis_df['total'].mean() if len(analysis_df) > 0 else 0
         st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+            <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                 <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;'>Avg Booking Value</div>
                 <div style='color: #f9fafb; font-size: 2.5rem; font-weight: 700;'>€{avg_booking_value:,.0f}</div>
             </div>
@@ -2104,7 +2104,7 @@ elif page == "Reports & Analytics":
     with metric_col4:
         total_players = analysis_df['players'].sum()
         st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+            <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                 <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;'>Total Players</div>
                 <div style='color: #f9fafb; font-size: 2.5rem; font-weight: 700;'>{int(total_players)}</div>
             </div>
@@ -2136,12 +2136,12 @@ elif page == "Reports & Analytics":
         for _, row in status_summary_df.iterrows():
             bar_width = row['Percentage']
             st.markdown(f"""
-                <div style='background: #2563eb; border: 2px solid #3b82f6; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;'>
+                <div style='background: #10b981; border: 2px solid #3b82f6; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;'>
                     <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
                         <div style='color: #f9fafb; font-weight: 600; font-size: 1rem;'>{row['Status']}</div>
                         <div style='color: #93c5fd; font-weight: 700; font-size: 1.125rem;'>{int(row['Count'])}</div>
                     </div>
-                    <div style='background: #1e3a8a; border-radius: 4px; height: 8px; overflow: hidden;'>
+                    <div style='background: #059669; border-radius: 4px; height: 8px; overflow: hidden;'>
                         <div style='background: linear-gradient(90deg, #3b82f6, #10b981); height: 100%; width: {bar_width}%;'></div>
                     </div>
                     <div style='color: #64748b; font-size: 0.75rem; margin-top: 0.25rem;'>{row['Percentage']:.1f}% of total</div>
@@ -2159,12 +2159,12 @@ elif page == "Reports & Analytics":
             bar_width = percentage
 
             st.markdown(f"""
-                <div style='background: #2563eb; border: 2px solid #3b82f6; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;'>
+                <div style='background: #10b981; border: 2px solid #3b82f6; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;'>
                     <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
                         <div style='color: #f9fafb; font-weight: 600; font-size: 1rem;'>{status}</div>
                         <div style='color: #10b981; font-weight: 700; font-size: 1.125rem;'>€{revenue:,.0f}</div>
                     </div>
-                    <div style='background: #1e3a8a; border-radius: 4px; height: 8px; overflow: hidden;'>
+                    <div style='background: #059669; border-radius: 4px; height: 8px; overflow: hidden;'>
                         <div style='background: linear-gradient(90deg, #10b981, #3b82f6); height: 100%; width: {bar_width}%;'></div>
                     </div>
                     <div style='color: #64748b; font-size: 0.75rem; margin-top: 0.25rem;'>{percentage:.1f}% of revenue</div>
@@ -2199,7 +2199,7 @@ elif page == "Reports & Analytics":
             st.markdown(f"""
                 <div style='display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;'>
                     <div style='color: #93c5fd; font-weight: 600; min-width: 100px; font-size: 0.875rem;'>{row['Date']}</div>
-                    <div style='flex: 1; background: #2563eb; border-radius: 4px; height: 24px; overflow: hidden; border: 1px solid #3b82f6;'>
+                    <div style='flex: 1; background: #10b981; border-radius: 4px; height: 24px; overflow: hidden; border: 1px solid #3b82f6;'>
                         <div style='background: linear-gradient(90deg, #3b82f6, #10b981); height: 100%; width: {bar_width}%; display: flex; align-items: center; padding-left: 0.5rem;'>
                             <span style='color: #f9fafb; font-weight: 600; font-size: 0.75rem;'>{int(row['Bookings'])}</span>
                         </div>
@@ -2241,12 +2241,12 @@ elif page == "Reports & Analytics":
                 conversion_text = ""
 
             st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;'>
+                <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;'>
                     <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;'>
                         <div style='color: #f9fafb; font-weight: 700; font-size: 1.25rem;'>{stage}</div>
                         <div style='color: #93c5fd; font-weight: 700; font-size: 1.5rem;'>{count}</div>
                     </div>
-                    <div style='background: #1e3a8a; border-radius: 6px; height: 12px; overflow: hidden;'>
+                    <div style='background: #059669; border-radius: 6px; height: 12px; overflow: hidden;'>
                         <div style='background: linear-gradient(90deg, #3b82f6, #10b981); height: 100%; width: {bar_width}%;'></div>
                     </div>
                     <div style='color: #64748b; font-size: 0.75rem; margin-top: 0.5rem;'>{percentage:.1f}% of total funnel volume</div>
@@ -2290,12 +2290,12 @@ elif page == "Reports & Analytics":
                 bar_width = (count / max_pop) * 100 if max_pop > 0 else 0
 
                 st.markdown(f"""
-                    <div style='background: #2563eb; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem;'>
+                    <div style='background: #10b981; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem;'>
                         <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
                             <div style='color: #f9fafb; font-weight: 600;'>{tee_time}</div>
                             <div style='color: #93c5fd; font-weight: 700;'>{int(count)} bookings</div>
                         </div>
-                        <div style='background: #1e3a8a; border-radius: 3px; height: 6px; overflow: hidden;'>
+                        <div style='background: #059669; border-radius: 3px; height: 6px; overflow: hidden;'>
                             <div style='background: #3b82f6; height: 100%; width: {bar_width}%;'></div>
                         </div>
                     </div>
@@ -2318,12 +2318,12 @@ elif page == "Reports & Analytics":
                 bar_width = (count / max_day) * 100 if max_day > 0 else 0
 
                 st.markdown(f"""
-                    <div style='background: #2563eb; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem;'>
+                    <div style='background: #10b981; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem;'>
                         <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
                             <div style='color: #f9fafb; font-weight: 600;'>{day}</div>
                             <div style='color: #93c5fd; font-weight: 700;'>{int(count)} bookings</div>
                         </div>
-                        <div style='background: #1e3a8a; border-radius: 3px; height: 6px; overflow: hidden;'>
+                        <div style='background: #059669; border-radius: 3px; height: 6px; overflow: hidden;'>
                             <div style='background: #10b981; height: 100%; width: {bar_width}%;'></div>
                         </div>
                     </div>
@@ -2346,7 +2346,7 @@ elif page == "Reports & Analytics":
         with col_lead1:
             avg_lead_time = lead_times_df['lead_time_days'].mean()
             st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+                <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                     <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;'>Average Lead Time</div>
                     <div style='color: #f9fafb; font-size: 2.5rem; font-weight: 700;'>{avg_lead_time:.1f}</div>
                     <div style='color: #64748b; font-size: 0.875rem;'>days in advance</div>
@@ -2356,7 +2356,7 @@ elif page == "Reports & Analytics":
         with col_lead2:
             min_lead_time = lead_times_df['lead_time_days'].min()
             st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+                <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                     <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;'>Minimum Lead Time</div>
                     <div style='color: #f9fafb; font-size: 2.5rem; font-weight: 700;'>{min_lead_time}</div>
                     <div style='color: #64748b; font-size: 0.875rem;'>days</div>
@@ -2366,7 +2366,7 @@ elif page == "Reports & Analytics":
         with col_lead3:
             max_lead_time = lead_times_df['lead_time_days'].max()
             st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+                <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                     <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;'>Maximum Lead Time</div>
                     <div style='color: #f9fafb; font-size: 2.5rem; font-weight: 700;'>{max_lead_time}</div>
                     <div style='color: #64748b; font-size: 0.875rem;'>days</div>
@@ -2390,12 +2390,12 @@ elif page == "Reports & Analytics":
             percentage = (count / len(lead_times_df)) * 100 if len(lead_times_df) > 0 else 0
 
             st.markdown(f"""
-                <div style='background: #2563eb; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem;'>
+                <div style='background: #10b981; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem;'>
                     <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
                         <div style='color: #f9fafb; font-weight: 600;'>{label}</div>
                         <div style='color: #93c5fd; font-weight: 700;'>{count} bookings ({percentage:.1f}%)</div>
                     </div>
-                    <div style='background: #1e3a8a; border-radius: 3px; height: 6px; overflow: hidden;'>
+                    <div style='background: #059669; border-radius: 3px; height: 6px; overflow: hidden;'>
                         <div style='background: linear-gradient(90deg, #3b82f6, #10b981); height: 100%; width: {percentage}%;'></div>
                     </div>
                 </div>
@@ -2419,7 +2419,7 @@ elif page == "Reports & Analytics":
         with col_cust1:
             unique_customers = len(customer_freq_df)
             st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+                <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                     <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase;'>Unique Customers</div>
                     <div style='color: #f9fafb; font-size: 2.5rem; font-weight: 700;'>{unique_customers}</div>
                 </div>
@@ -2428,7 +2428,7 @@ elif page == "Reports & Analytics":
         with col_cust2:
             avg_inquiries = customer_freq_df['Total Inquiries'].mean()
             st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+                <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                     <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase;'>Avg Inquiries/Customer</div>
                     <div style='color: #f9fafb; font-size: 2.5rem; font-weight: 700;'>{avg_inquiries:.1f}</div>
                 </div>
@@ -2437,7 +2437,7 @@ elif page == "Reports & Analytics":
         with col_cust3:
             repeat_customers = len(customer_freq_df[customer_freq_df['Total Inquiries'] > 1])
             st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+                <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                     <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase;'>Repeat Customers</div>
                     <div style='color: #f9fafb; font-size: 2.5rem; font-weight: 700;'>{repeat_customers}</div>
                 </div>
@@ -2447,7 +2447,7 @@ elif page == "Reports & Analytics":
         st.markdown("#### Top Customers by Inquiry Volume")
         for _, row in customer_freq_df.head(10).iterrows():
             st.markdown(f"""
-                <div style='background: #2563eb; border: 1px solid #3b82f6; border-radius: 6px; padding: 1rem; margin-bottom: 0.5rem;'>
+                <div style='background: #10b981; border: 1px solid #3b82f6; border-radius: 6px; padding: 1rem; margin-bottom: 0.5rem;'>
                     <div style='display: flex; justify-content: space-between; align-items: center;'>
                         <div>
                             <div style='color: #f9fafb; font-weight: 600;'>{row['Customer Email']}</div>
@@ -2479,7 +2479,7 @@ elif page == "Reports & Analytics":
             bar_width = (row['Total Requests'] / max_requests) * 100 if max_requests > 0 else 0
 
             st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;'>
+                <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;'>
                     <div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;'>
                         <div>
                             <div style='color: #f9fafb; font-weight: 700; font-size: 1.125rem;'>{row['Golf Course']}</div>
@@ -2490,7 +2490,7 @@ elif page == "Reports & Analytics":
                             <div style='color: #64748b; font-size: 0.75rem;'>total requests</div>
                         </div>
                     </div>
-                    <div style='background: #1e3a8a; border-radius: 6px; height: 10px; overflow: hidden; margin-bottom: 0.75rem;'>
+                    <div style='background: #059669; border-radius: 6px; height: 10px; overflow: hidden; margin-bottom: 0.75rem;'>
                         <div style='background: linear-gradient(90deg, #3b82f6, #10b981); height: 100%; width: {bar_width}%;'></div>
                     </div>
                     <div style='display: flex; justify-content: space-between;'>
@@ -2573,25 +2573,25 @@ elif page == "Waitlist":
     with col_wl1:
         waiting_count = len(waitlist_df[waitlist_df['status'] == 'Waiting']) if not waitlist_df.empty else 0
         st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+            <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                 <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase;'>Waiting</div>
-                <div style='color: #eab308; font-size: 2.5rem; font-weight: 700;'>{waiting_count}</div>
+                <div style='color: #fbbf24; font-size: 2.5rem; font-weight: 700;'>{waiting_count}</div>
             </div>
         """, unsafe_allow_html=True)
 
     with col_wl2:
         notified_count = len(waitlist_df[waitlist_df['status'] == 'Notified']) if not waitlist_df.empty else 0
         st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+            <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                 <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase;'>Notified</div>
-                <div style='color: #60a5fa; font-size: 2.5rem; font-weight: 700;'>{notified_count}</div>
+                <div style='color: #3b82f6; font-size: 2.5rem; font-weight: 700;'>{notified_count}</div>
             </div>
         """, unsafe_allow_html=True)
 
     with col_wl3:
         converted_count = len(waitlist_df[waitlist_df['status'] == 'Converted']) if not waitlist_df.empty else 0
         st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+            <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                 <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase;'>Converted</div>
                 <div style='color: #10b981; font-size: 2.5rem; font-weight: 700;'>{converted_count}</div>
             </div>
@@ -2600,7 +2600,7 @@ elif page == "Waitlist":
     with col_wl4:
         expired_count = len(waitlist_df[waitlist_df['status'] == 'Expired']) if not waitlist_df.empty else 0
         st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
+            <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; text-align: center;'>
                 <div style='color: #93c5fd; font-size: 0.75rem; font-weight: 700; text-transform: uppercase;'>Expired</div>
                 <div style='color: #64748b; font-size: 2.5rem; font-weight: 700;'>{expired_count}</div>
             </div>
@@ -2666,8 +2666,8 @@ elif page == "Waitlist":
 
         for _, entry in filtered_wl.iterrows():
             status_color = {
-                'Waiting': '#eab308',
-                'Notified': '#60a5fa',
+                'Waiting': '#fbbf24',
+                'Notified': '#3b82f6',
                 'Converted': '#10b981',
                 'Expired': '#64748b',
                 'Cancelled': '#ef4444'
@@ -2677,7 +2677,7 @@ elif page == "Waitlist":
             created_at = entry['created_at'].strftime('%b %d, %Y %I:%M %p') if pd.notna(entry['created_at']) else 'N/A'
 
             st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem;'>
+                <div style='background: linear-gradient(135deg, #059669 0%, #1e293b 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem;'>
                     <div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;'>
                         <div>
                             <div style='color: #f9fafb; font-weight: 700; font-size: 1rem;'>{entry['waitlist_id']}</div>
@@ -2808,7 +2808,7 @@ elif page == "Marketing Segmentation":
         color = segment_colors.get(segment, '#64748b')
         with col:
             st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: 2px solid {color}; border-radius: 12px; padding: 1rem; text-align: center;'>
+                <div style='background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 2px solid {color}; border-radius: 12px; padding: 1rem; text-align: center;'>
                     <div style='color: {color}; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; margin-bottom: 0.25rem;'>{segment}</div>
                     <div style='color: #f9fafb; font-size: 1.75rem; font-weight: 700;'>{count}</div>
                 </div>
@@ -3094,11 +3094,11 @@ elif page == "Notify Integration":
     st.markdown("### Export Formats Reference")
 
     st.markdown("""
-        <div style='background: #1e3a8a; border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem;'>
+        <div style='background: #059669; border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem;'>
             <div style='color: #f9fafb; font-weight: 700; font-size: 1.125rem; margin-bottom: 1rem;'>Supported Export Formats</div>
             <div style='display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;'>
                 <div>
-                    <div style='color: #60a5fa; font-weight: 600; margin-bottom: 0.5rem;'>JSON Format</div>
+                    <div style='color: #3b82f6; font-weight: 600; margin-bottom: 0.5rem;'>JSON Format</div>
                     <div style='color: #93c5fd; font-size: 0.875rem;'>Structured data with metadata, ideal for API integrations and data processing systems</div>
                 </div>
                 <div>

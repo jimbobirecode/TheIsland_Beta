@@ -94,26 +94,26 @@ db_pool = None
 
 
 # ============================================================================
-# THE ISLAND BRAND COLORS
+# BRAND COLORS
 # ============================================================================
 
 THE_ISLAND_COLORS = {
-    'navy_primary': '#24388f',
-    'royal_blue': '#1923c2',
-    'powder_blue': '#b8c1da',
-    'charcoal': '#2e303d',
+    'navy_primary': '#10b981',      # Emerald Green (primary brand)
+    'royal_blue': '#059669',        # Dark Emerald (gradients, cards)
+    'powder_blue': '#3b82f6',       # Bright Blue (accent)
+    'charcoal': '#1f2937',          # Text Dark
     'black': '#000000',
-    'white': '#ffffff',
-    'light_grey': '#f8f9fa',
+    'white': '#ffffff',             # Pure White
+    'light_grey': '#f9fafb',        # Background Gray (light)
     'border_grey': '#e5e7eb',
-    'text_dark': '#1f2937',
+    'text_dark': '#1f2937',         # Text Dark (dark text)
     'text_medium': '#4b5563',
     'text_light': '#6b7280',
-    'gradient_start': '#24388f',
-    'gradient_end': '#1923c2',
-    'gold_accent': '#D4AF37',
-    'green_success': '#2D5F3F',
-    'bg_light': '#f3f4f6',
+    'gradient_start': '#059669',    # Dark Emerald (gradients)
+    'gradient_end': '#10b981',      # Emerald Green (primary brand)
+    'gold_accent': '#fbbf24',       # Golden Yellow
+    'green_success': '#10b981',     # Emerald Green (primary brand)
+    'bg_light': '#f9fafb',          # Background Gray (light)
 }
 
 
