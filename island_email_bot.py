@@ -72,13 +72,13 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 CORE_API_URL = os.getenv("CORE_API_URL", "https://core-new-aku3.onrender.com")
 
 # Dashboard API endpoint
-DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://golfclub-dashboard.onrender.com")
+DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://theisland-dashboard.onrender.com")
 
 # Default course for bookings
-DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "golfclub")
+DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "theisland")
 
 # Tracking email for confirmation webhooks
-TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "golfclub")
+TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "theisland")
 
 # Club booking email (appears in mailto links)
 CLUB_BOOKING_EMAIL = os.getenv("CLUB_BOOKING_EMAIL", "clubname@bookings.teemail.io")
