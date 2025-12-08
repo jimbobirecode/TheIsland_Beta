@@ -1374,19 +1374,28 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
         if dates:
             try:
                 # Make the API call (can take up to 120 seconds)
+                api_url = f"{CORE_API_URL}/check_availability"
+                payload = {
+                    'course_id': DEFAULT_COURSE_ID,
+                    'dates': dates,
+                    'players': players
+                }
+
+                logging.info(f"   🔗 Calling Core API: {api_url}")
+                logging.info(f"   📦 Payload: {payload}")
+
                 response = requests.post(
-                    f"{CORE_API_URL}/check_availability",
-                    json={
-                        'course_id': DEFAULT_COURSE_ID,
-                        'dates': dates,
-                        'players': players
-                    },
+                    api_url,
+                    json=payload,
                     timeout=120
                 )
+
+                logging.info(f"   ✅ Core API responded with status: {response.status_code}")
 
                 if response.status_code == 200:
                     api_data = response.json()
                     results = api_data.get('results', [])
+                    logging.info(f"   📊 API returned {len(results)} results")
 
                     if results:
                         # Send inquiry email with available times
