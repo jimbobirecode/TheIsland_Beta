@@ -31,8 +31,8 @@ app = Flask(__name__)
 
 # --- CONFIG ---
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-FROM_EMAIL = os.getenv("FROM_EMAIL", "teetimes@countylouthgolfclub.com")
-FROM_NAME = os.getenv("FROM_NAME", "County Louth Golf Club")
+FROM_EMAIL = os.getenv("FROM_EMAIL", "clubname@bookings.teemail.io")
+FROM_NAME = os.getenv("FROM_NAME", "Golf Club Bookings")
 PER_PLAYER_FEE = float(os.getenv("PER_PLAYER_FEE", "325.00"))
 BOOKINGS_FILE = os.getenv("BOOKINGS_FILE", "provisional_bookings.jsonl")
 
@@ -40,19 +40,19 @@ BOOKINGS_FILE = os.getenv("BOOKINGS_FILE", "provisional_bookings.jsonl")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Core API endpoint
-CORE_API_URL = os.getenv("CORE_API_URL", "http://localhost:5001")
+CORE_API_URL = os.getenv("CORE_API_URL", "https://core-new-aku3.onrender.com")
 
 # External Dashboard API endpoint
-DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://teemailsg-1.onrender.com")
+DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://theisland-dashboard.onrender.com")
 
 # Default course for bookings
-DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "baltray")
+DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "theisland")
 
 # Tracking email for confirmation webhooks (separate from course ID)
-TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "countylouth")
+TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "theisland")
 
 # Club booking email (appears in mailto links for staff copy)
-CLUB_BOOKING_EMAIL = os.getenv("CLUB_BOOKING_EMAIL", "teetimes@countylouthgolfclub.com")
+CLUB_BOOKING_EMAIL = os.getenv("CLUB_BOOKING_EMAIL", "clubname@bookings.teemail.io")
 
 # --- LOGGING ---
 logging.basicConfig(
@@ -452,7 +452,7 @@ def get_email_header(course_name: str) -> str:
     """
 
 
-def get_email_footer(course_name: str, from_email: str = "teetimes@countylouthgolfclub.com") -> str:
+def get_email_footer(course_name: str, from_email: str = "clubname@bookings.teemail.io") -> str:
     """Generate Outlook-compatible email footer"""
     return f"""
                             </td>
@@ -521,7 +521,7 @@ def format_standard_booking_email_html(
     guest_email: str,
     booking_link_func,
     booking_id: str = None,
-    from_email: str = "teetimes@countylouthgolfclub.com",
+    from_email: str = "clubname@bookings.teemail.io",
     used_alternatives: bool = False,
     original_dates: list = None
 ) -> str:
@@ -652,7 +652,7 @@ def format_standard_booking_email_html(
 def format_no_availability_email_html(
     course_name: str,
     player_count: int,
-    from_email: str = "teetimes@countylouthgolfclub.com",
+    from_email: str = "clubname@bookings.teemail.io",
     original_dates: list = None,
     checked_alternatives: bool = False,
     guest_email: str = None,
@@ -746,7 +746,7 @@ Thank you.""")
 def format_error_email_html(
     course_name: str,
     error_message: str = None,
-    from_email: str = "teetimes@countylouthgolfclub.com"
+    from_email: str = "clubname@bookings.teemail.io"
 ) -> str:
     """Format HTML email for errors"""
     
@@ -780,7 +780,7 @@ def format_provisional_acknowledgment_email(
     player_count: int,
     requested_dates: list,
     guest_email: str,
-    from_email: str = "teetimes@countylouthgolfclub.com"
+    from_email: str = "clubname@bookings.teemail.io"
 ) -> str:
     """Format HTML email for provisional booking acknowledgment (no availability checking)"""
 
@@ -2473,7 +2473,7 @@ def format_group_booking_email_html(
     group_analysis: dict,
     booking_link_func,
     booking_id: str = None,
-    from_email: str = "teetimes@countylouthgolfclub.com",
+    from_email: str = "clubname@bookings.teemail.io",
     used_alternatives: bool = False,
     original_dates: list = None
 ) -> str:
@@ -2661,7 +2661,7 @@ def format_no_consecutive_slots_email_html(
     course_name: str,
     player_count: int,
     slots_needed: int,
-    from_email: str = "teetimes@countylouthgolfclub.com",
+    from_email: str = "clubname@bookings.teemail.io",
     original_dates: list = None,
     checked_alternatives: bool = False,
     guest_email: str = None,
