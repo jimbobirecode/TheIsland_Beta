@@ -32,6 +32,8 @@ services:
         value: theisland
       - key: CLUB_BOOKING_EMAIL
         value: bookings@theislandgolfclub.ie
+      - key: CORE_API_URL
+        value: https://core-new-aku3.onrender.com
       - key: DASHBOARD_API_URL
         value: https://theisland-dashboard.onrender.com
       - key: PORT
