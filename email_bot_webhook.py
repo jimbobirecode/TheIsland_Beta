@@ -3218,7 +3218,7 @@ def api_export_push():
         bookings = get_filtered_bookings(filters)
 
         payload = {
-            'source': 'TheIsland Golf Club',
+            'source': 'Golf Club',
             'exported_at': datetime.now().isoformat(),
             'count': len(bookings),
             'bookings': bookings

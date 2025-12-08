@@ -26,10 +26,10 @@ def get_club_display_name(club_id: str) -> str:
     Maps internal club IDs to full display names.
     """
     club_mapping = {
-        'island': 'The Island Golf Club',
-        'islandgolfclub': 'The Island Golf Club',
-        'island-golf-club': 'The Island Golf Club',
-        'island_golf_club': 'The Island Golf Club',
+        'island': 'Golf Club',
+        'islandgolfclub': 'Golf Club',
+        'island-golf-club': 'Golf Club',
+        'island_golf_club': 'Golf Club',
     }
 
     # Try to find mapping (case insensitive)
@@ -63,27 +63,27 @@ def get_club_info(club_id: str) -> dict:
     club_info = {
         'island': {
             'phone': '(555) 123-4567',
-            'email': 'bookings@islandgolfclub.com',
-            'location': 'Island Golf Club, Paradise Bay',
-            'website': 'www.islandgolfclub.com'
+            'email': 'clubname@bookings.teemail.io',
+            'location': 'Golf Club',
+            'website': 'www.golfclub.com'
         },
         'islandgolfclub': {
             'phone': '(555) 123-4567',
-            'email': 'bookings@islandgolfclub.com',
-            'location': 'Island Golf Club, Paradise Bay',
-            'website': 'www.islandgolfclub.com'
+            'email': 'clubname@bookings.teemail.io',
+            'location': 'Golf Club',
+            'website': 'www.golfclub.com'
         },
         'island-golf-club': {
             'phone': '(555) 123-4567',
-            'email': 'bookings@islandgolfclub.com',
-            'location': 'Island Golf Club, Paradise Bay',
-            'website': 'www.islandgolfclub.com'
+            'email': 'clubname@bookings.teemail.io',
+            'location': 'Golf Club',
+            'website': 'www.golfclub.com'
         },
         'island_golf_club': {
             'phone': '(555) 123-4567',
-            'email': 'bookings@islandgolfclub.com',
-            'location': 'Island Golf Club, Paradise Bay',
-            'website': 'www.islandgolfclub.com'
+            'email': 'clubname@bookings.teemail.io',
+            'location': 'Golf Club',
+            'website': 'www.golfclub.com'
         },
     }
 
@@ -760,7 +760,7 @@ if not st.session_state.authenticated:
     # Center the logo
     st.markdown("""
         <div style='display: flex; justify-content: center; align-items: center;'>
-            <img src='https://raw.githubusercontent.com/jimbobirecode/TeeMail-Assests/main/images.png' width='300' style='display: block; margin: 0 auto;'/>
+            <img src='https://raw.githubusercontent.com/jimbobirecode/TeeMail-Assests/main/output-onlinepngtools.png' width='300' style='display: block; margin: 0 auto;'/>
         </div>
     """, unsafe_allow_html=True)
 
@@ -1499,11 +1499,11 @@ def identify_marketing_segments(df):
 # ========================================
 
 with st.sidebar:
-    # The Island Golf Club logo
+    # Golf Club logo
     st.markdown("""
         <div style='text-align: center; padding: 1rem 0.5rem; margin-bottom: 1rem;'>
     """, unsafe_allow_html=True)
-    st.image("https://raw.githubusercontent.com/jimbobirecode/TeeMail-Assests/main/images.png",
+    st.image("https://raw.githubusercontent.com/jimbobirecode/TeeMail-Assests/main/output-onlinepngtools.png",
              width=200)
     st.markdown("""
         </div>

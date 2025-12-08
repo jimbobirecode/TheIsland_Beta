@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-The Island Golf Club - Email Bot with Clear Customer Journey
-=============================================================
+Golf Club Booking System - Email Bot with Clear Customer Journey
+=================================================================
 
 CUSTOMER JOURNEY - CLEAR TERMINOLOGY
 =====================================
@@ -60,8 +60,8 @@ app = Flask(__name__)
 
 # --- CONFIG ---
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-FROM_EMAIL = os.getenv("FROM_EMAIL", "bookings@theislandgolfclub.ie")
-FROM_NAME = os.getenv("FROM_NAME", "The Island Golf Club")
+FROM_EMAIL = os.getenv("FROM_EMAIL", "clubname@bookings.teemail.io")
+FROM_NAME = os.getenv("FROM_NAME", "Golf Club Bookings")
 PER_PLAYER_FEE = float(os.getenv("PER_PLAYER_FEE", "325.00"))
 BOOKINGS_FILE = os.getenv("BOOKINGS_FILE", "provisional_bookings.jsonl")
 
@@ -72,16 +72,16 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 CORE_API_URL = os.getenv("CORE_API_URL", "https://core-new-aku3.onrender.com")
 
 # Dashboard API endpoint
-DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://theisland-dashboard.onrender.com")
+DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://golfclub-dashboard.onrender.com")
 
 # Default course for bookings
-DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "theisland")
+DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "golfclub")
 
 # Tracking email for confirmation webhooks
-TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "theisland")
+TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "golfclub")
 
 # Club booking email (appears in mailto links)
-CLUB_BOOKING_EMAIL = os.getenv("CLUB_BOOKING_EMAIL", "bookings@theislandgolfclub.ie")
+CLUB_BOOKING_EMAIL = os.getenv("CLUB_BOOKING_EMAIL", "clubname@bookings.teemail.io")
 
 # --- LOGGING ---
 logging.basicConfig(
@@ -97,7 +97,7 @@ db_pool = None
 # BRAND COLORS
 # ============================================================================
 
-THE_ISLAND_COLORS = {
+BRAND_COLORS = {
     'navy_primary': '#10b981',      # Emerald Green (primary brand)
     'royal_blue': '#059669',        # Dark Emerald (gradients, cards)
     'powder_blue': '#3b82f6',       # Bright Blue (accent)
@@ -582,7 +582,7 @@ def init_database():
 # ============================================================================
 
 def get_email_header():
-    """The Island Golf Club branded email header"""
+    """Golf Club branded email header"""
     return f"""
     <!DOCTYPE html>
     <html xmlns="http://www.w3.org/1999/xhtml">
@@ -590,14 +590,14 @@ def get_email_header():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <title>The Island Golf Club - Booking</title>
+        <title>Golf Club - Booking</title>
         <style type="text/css">
             body {{
                 margin: 0 !important;
                 padding: 0 !important;
                 width: 100% !important;
                 font-family: Georgia, 'Times New Roman', serif;
-                background-color: {THE_ISLAND_COLORS['bg_light']};
+                background-color: {BRAND_COLORS['bg_light']};
             }}
             .email-container {{
                 background: #ffffff;
@@ -610,7 +610,7 @@ def get_email_header():
                 background: #ffffff;
                 padding: 40px 30px;
                 text-align: center;
-                border-bottom: 2px solid {THE_ISLAND_COLORS['border_grey']};
+                border-bottom: 2px solid {BRAND_COLORS['border_grey']};
             }}
             .header-logo {{
                 max-width: 200px;
@@ -622,13 +622,13 @@ def get_email_header():
             }}
             .info-box {{
                 background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%);
-                border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']};
+                border-left: 4px solid {BRAND_COLORS['navy_primary']};
                 border-radius: 8px;
                 padding: 20px;
                 margin: 20px 0;
             }}
             .button-link {{
-                background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);
+                background: linear-gradient(135deg, {BRAND_COLORS['navy_primary']} 0%, {BRAND_COLORS['royal_blue']} 100%);
                 color: #ffffff !important;
                 padding: 15px 40px;
                 text-decoration: none;
@@ -644,10 +644,10 @@ def get_email_header():
                 margin: 25px 0;
                 border-radius: 8px;
                 overflow: hidden;
-                border: 1px solid {THE_ISLAND_COLORS['border_grey']};
+                border: 1px solid {BRAND_COLORS['border_grey']};
             }}
             .tee-table thead {{
-                background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);
+                background: linear-gradient(135deg, {BRAND_COLORS['navy_primary']} 0%, {BRAND_COLORS['royal_blue']} 100%);
                 color: #ffffff;
             }}
             .tee-table th {{
@@ -658,10 +658,10 @@ def get_email_header():
             }}
             .tee-table td {{
                 padding: 15px 12px;
-                border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};
+                border-bottom: 1px solid {BRAND_COLORS['border_grey']};
             }}
             .footer {{
-                background: linear-gradient(135deg, {THE_ISLAND_COLORS['gradient_start']} 0%, {THE_ISLAND_COLORS['gradient_end']} 100%);
+                background: linear-gradient(135deg, {BRAND_COLORS['gradient_start']} 0%, {BRAND_COLORS['gradient_end']} 100%);
                 padding: 30px;
                 text-align: center;
                 color: #ffffff;
@@ -669,15 +669,15 @@ def get_email_header():
         </style>
     </head>
     <body>
-        <table role="presentation" width="100%" style="background-color: {THE_ISLAND_COLORS['bg_light']};">
+        <table role="presentation" width="100%" style="background-color: {BRAND_COLORS['bg_light']};">
             <tr>
                 <td style="padding: 20px;">
                     <table class="email-container" align="center" width="800">
                         <tr>
                             <td class="header">
-                                <img src="https://raw.githubusercontent.com/jimbobirecode/TeeMail-Assests/main/images.png" alt="The Island Golf Club" class="header-logo" />
-                                <hr style="border: 0; height: 3px; background-color: {THE_ISLAND_COLORS['royal_blue']}; margin: 20px auto; width: 100%;" />
-                                <p style="margin: 0; color: {THE_ISLAND_COLORS['text_medium']}; font-size: 16px; font-weight: 600;">
+                                <img src="https://raw.githubusercontent.com/jimbobirecode/TeeMail-Assests/main/output-onlinepngtools.png" alt="Golf Club" class="header-logo" />
+                                <hr style="border: 0; height: 3px; background-color: {BRAND_COLORS['royal_blue']}; margin: 20px auto; width: 100%;" />
+                                <p style="margin: 0; color: {BRAND_COLORS['text_medium']}; font-size: 16px; font-weight: 600;">
                                     Visitor Tee Time Booking
                                 </p>
                             </td>
@@ -688,25 +688,23 @@ def get_email_header():
 
 
 def get_email_footer():
-    """The Island Golf Club branded email footer"""
+    """Golf Club branded email footer"""
     return f"""
                             </td>
                         </tr>
                         <tr>
                             <td class="footer">
-                                <strong style="color: {THE_ISLAND_COLORS['gold_accent']}; font-size: 18px;">
-                                    The Island Golf Club
+                                <strong style="color: {BRAND_COLORS['gold_accent']}; font-size: 18px;">
+                                    Golf Club Bookings
                                 </strong>
                                 <p style="margin: 10px 0; color: #ffffff; font-size: 14px;">
-                                    Corballis, Donabate, Co. Dublin, K36 KH85, Ireland
+                                    Tee Time Booking System
                                 </p>
-                                <p style="margin: 0; color: {THE_ISLAND_COLORS['powder_blue']}; font-size: 13px;">
-                                    📞 <a href="tel:+35318436205" style="color: {THE_ISLAND_COLORS['gold_accent']}; text-decoration: none;">+353 1 843 6205</a>
-                                    <span style="margin: 0 8px;">|</span>
-                                    📧 <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {THE_ISLAND_COLORS['gold_accent']}; text-decoration: none;">{CLUB_BOOKING_EMAIL}</a>
+                                <p style="margin: 0; color: {BRAND_COLORS['powder_blue']}; font-size: 13px;">
+                                    📧 <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {BRAND_COLORS['gold_accent']}; text-decoration: none;">{CLUB_BOOKING_EMAIL}</a>
                                 </p>
-                                <p style="margin-top: 15px; color: {THE_ISLAND_COLORS['powder_blue']}; font-size: 12px;">
-                                    Championship Links Golf Course
+                                <p style="margin-top: 15px; color: {BRAND_COLORS['powder_blue']}; font-size: 12px;">
+                                    Powered by TeeMail
                                 </p>
                             </td>
                         </tr>
@@ -724,7 +722,7 @@ def create_book_button(booking_link: str, button_text: str = "Reserve Now") -> s
     return f"""
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
             <tr>
-                <td style="border-radius: 8px; background: linear-gradient(135deg, {THE_ISLAND_COLORS['navy_primary']} 0%, {THE_ISLAND_COLORS['royal_blue']} 100%);">
+                <td style="border-radius: 8px; background: linear-gradient(135deg, {BRAND_COLORS['navy_primary']} 0%, {BRAND_COLORS['royal_blue']} 100%);">
                     <a href="{booking_link}" style="background: transparent; color: #ffffff !important; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display: inline-block;">
                         {button_text}
                     </a>
@@ -768,17 +766,17 @@ def format_inquiry_email(results: list, player_count: int, guest_email: str, boo
     html = get_email_header()
 
     html += f"""
-        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
-            Thank you for your enquiry. We are delighted to present the following available tee times at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>:
+        <p style="color: {BRAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
+            Thank you for your enquiry. We are delighted to present the following available tee times:
         </p>
 
         <div class="info-box">
-            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 15px 0;">
+            <h3 style="color: {BRAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 15px 0;">
                 👥 Booking Details
             </h3>
             <p style="margin: 5px 0;"><strong>Players:</strong> {player_count}</p>
             <p style="margin: 5px 0;"><strong>Green Fee:</strong> €{PER_PLAYER_FEE:.0f} per player</p>
-            <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background: #e0f2fe; color: {THE_ISLAND_COLORS['navy_primary']}; padding: 4px 10px; border-radius: 15px; font-size: 13px;">Inquiry - Awaiting Your Request</span></p>
+            <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background: #e0f2fe; color: {BRAND_COLORS['navy_primary']}; padding: 4px 10px; border-radius: 15px; font-size: 13px;">Inquiry - Awaiting Your Request</span></p>
         </div>
     """
 
@@ -793,7 +791,7 @@ def format_inquiry_email(results: list, player_count: int, guest_email: str, boo
 
         html += f"""
         <div style="margin: 30px 0;">
-            <h2 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 22px; font-weight: 700; margin: 0 0 15px 0; padding-bottom: 10px; border-bottom: 3px solid {THE_ISLAND_COLORS['gold_accent']};">
+            <h2 style="color: {BRAND_COLORS['navy_primary']}; font-size: 22px; font-weight: 700; margin: 0 0 15px 0; padding-bottom: 10px; border-bottom: 3px solid {BRAND_COLORS['gold_accent']};">
                 🗓️ {date}
             </h2>
             <table class="tee-table">
@@ -815,9 +813,9 @@ def format_inquiry_email(results: list, player_count: int, guest_email: str, boo
 
             html += f"""
                 <tr style="background-color: #f9fafb;">
-                    <td><strong style="font-size: 16px; color: {THE_ISLAND_COLORS['navy_primary']};">{time}</strong></td>
-                    <td style="text-align: center;"><span style="background: #ecfdf5; color: {THE_ISLAND_COLORS['green_success']}; padding: 4px 10px; border-radius: 15px; font-size: 13px;">✓ Available</span></td>
-                    <td><span style="color: {THE_ISLAND_COLORS['royal_blue']}; font-weight: 700;">€{PER_PLAYER_FEE:.0f} pp</span></td>
+                    <td><strong style="font-size: 16px; color: {BRAND_COLORS['navy_primary']};">{time}</strong></td>
+                    <td style="text-align: center;"><span style="background: #ecfdf5; color: {BRAND_COLORS['green_success']}; padding: 4px 10px; border-radius: 15px; font-size: 13px;">✓ Available</span></td>
+                    <td><span style="color: {BRAND_COLORS['royal_blue']}; font-weight: 700;">€{PER_PLAYER_FEE:.0f} pp</span></td>
                     <td style="text-align: center;">
                         {button_html}
                     </td>
@@ -832,13 +830,13 @@ def format_inquiry_email(results: list, player_count: int, guest_email: str, boo
 
     html += f"""
         <div class="info-box" style="margin-top: 30px;">
-            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
+            <h3 style="color: {BRAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
                 💡 How to Book Your Tee Time
             </h3>
             <p style="margin: 5px 0;"><strong>Step 1:</strong> Click "Book Now" for your preferred time</p>
             <p style="margin: 5px 0;"><strong>Step 2:</strong> Your email client will open with booking details</p>
             <p style="margin: 5px 0;"><strong>Step 3:</strong> Send the email to request your tee time</p>
-            <p style="margin-top: 12px; font-style: italic; font-size: 14px;">Or call us at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">+353 1 843 6205</strong></p>
+            <p style="margin-top: 12px; font-style: italic; font-size: 14px;">Or call us at <strong style="color: {BRAND_COLORS['navy_primary']};">+353 1 843 6205</strong></p>
         </div>
     """
 
@@ -857,48 +855,48 @@ def format_acknowledgment_email(booking_data: Dict) -> str:
     html = get_email_header()
 
     html += f"""
-        <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['powder_blue']} 0%, #a3b9d9 100%); color: {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+        <div style="background: linear-gradient(135deg, {BRAND_COLORS['powder_blue']} 0%, #a3b9d9 100%); color: {BRAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
             <h2 style="margin: 0; font-size: 28px; font-weight: 700;">📬 Booking Request Received</h2>
         </div>
 
-        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
-            Thank you for your booking request at <strong>The Island Golf Club</strong>. We have received your request and will review it shortly.
+        <p style="color: {BRAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
+            Thank you for your booking request. We have received your request and will review it shortly.
         </p>
 
         <div class="info-box">
-            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0;">
+            <h3 style="color: {BRAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0;">
                 📋 Your Booking Request
             </h3>
-            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid {THE_ISLAND_COLORS['border_grey']}; border-radius: 8px;">
-                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
-                    <td style="padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid {BRAND_COLORS['border_grey']}; border-radius: 8px;">
+                <tr style="background-color: {BRAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         Booking ID
                     </td>
-                    <td style="padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         {booking_id}
                     </td>
                 </tr>
                 <tr style="background-color: #ffffff;">
-                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         <strong>📅 Date</strong>
                     </td>
-                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         {date}
                     </td>
                 </tr>
-                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
-                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                <tr style="background-color: {BRAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         <strong>🕐 Time</strong>
                     </td>
-                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         {time}
                     </td>
                 </tr>
                 <tr style="background-color: #ffffff;">
-                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         <strong>👥 Players</strong>
                     </td>
-                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         {players}
                     </td>
                 </tr>
@@ -906,29 +904,29 @@ def format_acknowledgment_email(booking_data: Dict) -> str:
                     <td style="padding: 18px 12px; font-weight: 700;">
                         <strong>💶 Total Fee</strong>
                     </td>
-                    <td style="padding: 18px 12px; text-align: right; color: {THE_ISLAND_COLORS['green_success']}; font-size: 22px; font-weight: 700;">
+                    <td style="padding: 18px 12px; text-align: right; color: {BRAND_COLORS['green_success']}; font-size: 22px; font-weight: 700;">
                         €{total_fee:.2f}
                     </td>
                 </tr>
             </table>
         </div>
 
-        <div style="background: #e0f2fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
+        <div style="background: #e0f2fe; border-left: 4px solid {BRAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
             <p style="margin: 0; font-size: 15px; line-height: 1.7;">
-                <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">✅ Request Received</strong>
+                <strong style="color: {BRAND_COLORS['navy_primary']};">✅ Request Received</strong>
             </p>
             <p style="margin: 10px 0 0 0; font-size: 14px; line-height: 1.7;">
                 We have received your booking request and our team will be in touch shortly to confirm your tee time. We'll contact you via email or phone within 24 hours.
             </p>
         </div>
 
-        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
-            Thank you for choosing The Island Golf Club.
+        <p style="color: {BRAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
+            Thank you for choosing our golf club.
         </p>
 
-        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
+        <p style="color: {BRAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
             Best regards,<br>
-            <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club Team</strong>
+            <strong style="color: {BRAND_COLORS['navy_primary']};">Golf Club Bookings Team</strong>
         </p>
     """
 
@@ -947,64 +945,64 @@ def format_confirmation_email(booking_data: Dict) -> str:
     html = get_email_header()
 
     html += f"""
-        <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['green_success']} 0%, #1f4d31 100%); color: {THE_ISLAND_COLORS['white']}; padding: 25px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+        <div style="background: linear-gradient(135deg, {BRAND_COLORS['green_success']} 0%, #1f4d31 100%); color: {BRAND_COLORS['white']}; padding: 25px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
             <h2 style="margin: 0; font-size: 28px; font-weight: 700;">✅ Booking Confirmed</h2>
         </div>
 
-        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
-            Congratulations! Your booking at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong> has been confirmed.
+        <p style="color: {BRAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
+            Congratulations! Your booking has been confirmed.
         </p>
 
-        <div class="info-box" style="border: 2px solid {THE_ISLAND_COLORS['green_success']};">
-            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0;">
+        <div class="info-box" style="border: 2px solid {BRAND_COLORS['green_success']};">
+            <h3 style="color: {BRAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0;">
                 📋 Confirmed Booking Details
             </h3>
-            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid {THE_ISLAND_COLORS['border_grey']}; border-radius: 8px;">
-                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
-                    <td style="padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid {BRAND_COLORS['border_grey']}; border-radius: 8px;">
+                <tr style="background-color: {BRAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         Booking ID
                     </td>
-                    <td style="padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         {booking_id}
                     </td>
                 </tr>
                 <tr style="background-color: #ffffff;">
-                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         <strong>📅 Date</strong>
                     </td>
-                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; color: {THE_ISLAND_COLORS['navy_primary']}; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; color: {BRAND_COLORS['navy_primary']}; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         {date}
                     </td>
                 </tr>
-                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
-                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                <tr style="background-color: {BRAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         <strong>🕐 Tee Time</strong>
                     </td>
-                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; color: {THE_ISLAND_COLORS['navy_primary']}; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; color: {BRAND_COLORS['navy_primary']}; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         {time}
                     </td>
                 </tr>
                 <tr style="background-color: #ffffff;">
-                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         <strong>👥 Number of Players</strong>
                     </td>
-                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         {players}
                     </td>
                 </tr>
-                <tr style="background-color: #fffbeb; border: 2px solid {THE_ISLAND_COLORS['gold_accent']};">
+                <tr style="background-color: #fffbeb; border: 2px solid {BRAND_COLORS['gold_accent']};">
                     <td style="padding: 18px 12px; font-weight: 700;">
                         <strong style="font-size: 16px;">💶 Total Amount Due</strong>
                     </td>
-                    <td style="padding: 18px 12px; text-align: right; color: {THE_ISLAND_COLORS['green_success']}; font-size: 24px; font-weight: 700;">
+                    <td style="padding: 18px 12px; text-align: right; color: {BRAND_COLORS['green_success']}; font-size: 24px; font-weight: 700;">
                         €{total_fee:.2f}
                     </td>
                 </tr>
             </table>
         </div>
 
-        <div style="background: linear-gradient(to right, #fffbeb 0%, #fef3c7 100%); border-left: 4px solid {THE_ISLAND_COLORS['gold_accent']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
-            <h3 style="margin: 0 0 15px 0; color: {THE_ISLAND_COLORS['navy_primary']};"><strong>💳 Payment Details</strong></h3>
+        <div style="background: linear-gradient(to right, #fffbeb 0%, #fef3c7 100%); border-left: 4px solid {BRAND_COLORS['gold_accent']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
+            <h3 style="margin: 0 0 15px 0; color: {BRAND_COLORS['navy_primary']};"><strong>💳 Payment Details</strong></h3>
             <p style="margin: 0 0 10px 0; font-size: 15px; line-height: 1.7;">
                 <strong>Payment Method:</strong> Bank Transfer or Card Payment
             </p>
@@ -1014,13 +1012,13 @@ def format_confirmation_email(booking_data: Dict) -> str:
             <p style="margin: 0 0 10px 0; font-size: 15px; line-height: 1.7;">
                 <strong>Bank Details:</strong> Please contact us for bank transfer details
             </p>
-            <p style="margin: 10px 0 0 0; font-size: 14px; color: {THE_ISLAND_COLORS['text_medium']}; font-style: italic;">
+            <p style="margin: 10px 0 0 0; font-size: 14px; color: {BRAND_COLORS['text_medium']}; font-style: italic;">
                 💡 For card payment or bank transfer details, please reply to this email or call us at <strong>+353 1 843 6205</strong>
             </p>
         </div>
 
-        <div style="background: #e0f2fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
-            <h3 style="margin: 0 0 10px 0; color: {THE_ISLAND_COLORS['navy_primary']};">📍 Important Information</h3>
+        <div style="background: #e0f2fe; border-left: 4px solid {BRAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
+            <h3 style="margin: 0 0 10px 0; color: {BRAND_COLORS['navy_primary']};">📍 Important Information</h3>
             <ul style="margin: 10px 0 0 0; padding-left: 20px; font-size: 14px; line-height: 1.8;">
                 <li>Please arrive <strong>30 minutes before</strong> your tee time</li>
                 <li>Please bring proof of handicap (if applicable)</li>
@@ -1029,19 +1027,19 @@ def format_confirmation_email(booking_data: Dict) -> str:
             </ul>
         </div>
 
-        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 30px 0;">
+        <p style="color: {BRAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 30px 0;">
             We look forward to welcoming you to our championship links course. If you have any questions, please don't hesitate to contact us.
         </p>
 
-        <div style="text-align: center; margin: 30px 0; padding: 20px; background-color: {THE_ISLAND_COLORS['light_grey']}; border-radius: 8px;">
-            <p style="margin: 0 0 10px 0; color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px;">Contact Us</p>
-            <p style="margin: 5px 0;"><strong style="color: {THE_ISLAND_COLORS['navy_primary']};">📧 Email:</strong> {FROM_EMAIL}</p>
-            <p style="margin: 5px 0;"><strong style="color: {THE_ISLAND_COLORS['navy_primary']};">📞 Phone:</strong> +353 1 843 6205</p>
+        <div style="text-align: center; margin: 30px 0; padding: 20px; background-color: {BRAND_COLORS['light_grey']}; border-radius: 8px;">
+            <p style="margin: 0 0 10px 0; color: {BRAND_COLORS['text_medium']}; font-size: 14px;">Contact Us</p>
+            <p style="margin: 5px 0;"><strong style="color: {BRAND_COLORS['navy_primary']};">📧 Email:</strong> {FROM_EMAIL}</p>
+            <p style="margin: 5px 0;"><strong style="color: {BRAND_COLORS['navy_primary']};">📞 Phone:</strong> +353 1 843 6205</p>
         </div>
 
-        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
+        <p style="color: {BRAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
             Best regards,<br>
-            <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club Team</strong>
+            <strong style="color: {BRAND_COLORS['navy_primary']};">Golf Club Bookings Team</strong>
         </p>
     """
 
@@ -1056,8 +1054,8 @@ def format_no_availability_email(player_count: int, guest_email: str = None, dat
     html = get_email_header()
 
     html += f"""
-        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
-            Thank you for your enquiry regarding tee times at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>.
+        <p style="color: {BRAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
+            Thank you for your enquiry regarding tee times at <strong style="color: {BRAND_COLORS['navy_primary']};">Golf Club</strong>.
         </p>
 
         <div style="background: #fef2f2; border-left: 4px solid #dc2626; border-radius: 8px; padding: 20px; margin: 25px 0;">
@@ -1119,15 +1117,15 @@ Thank you.""")
 
     html += f"""
         <div class="info-box">
-            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
+            <h3 style="color: {BRAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
                 📞 Please Contact Us
             </h3>
             <p style="margin: 5px 0;">We would be delighted to assist you in finding alternative dates:</p>
-            <p style="margin: 8px 0;"><strong>Email:</strong> <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {THE_ISLAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a></p>
-            <p style="margin: 8px 0;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: {THE_ISLAND_COLORS['navy_primary']};">+353 1 843 6205</a></p>
+            <p style="margin: 8px 0;"><strong>Email:</strong> <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {BRAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a></p>
+            <p style="margin: 8px 0;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: {BRAND_COLORS['navy_primary']};">+353 1 843 6205</a></p>
         </div>
 
-        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 20px 0 0 0;">
+        <p style="color: {BRAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 20px 0 0 0;">
             We look forward to welcoming you to our championship links course.
         </p>
     """
@@ -1144,28 +1142,28 @@ def format_inquiry_received_email(parsed: Dict, guest_email: str, booking_id: st
     dates = parsed.get('dates', [])
 
     html += f"""
-        <div style="background: linear-gradient(135deg, {THE_ISLAND_COLORS['powder_blue']} 0%, #a3b9d9 100%); color: {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+        <div style="background: linear-gradient(135deg, {BRAND_COLORS['powder_blue']} 0%, #a3b9d9 100%); color: {BRAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
             <h2 style="margin: 0; font-size: 28px; font-weight: 700;">📧 Inquiry Received</h2>
         </div>
 
-        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
-            Thank you for your tee time inquiry at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>.
+        <p style="color: {BRAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
+            Thank you for your tee time inquiry at <strong style="color: {BRAND_COLORS['navy_primary']};">Golf Club</strong>.
         </p>
 
         <div class="info-box">
-            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0;">
+            <h3 style="color: {BRAND_COLORS['navy_primary']}; font-size: 20px; margin: 0 0 20px 0;">
                 📋 Your Inquiry Details
             </h3>
-            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid {THE_ISLAND_COLORS['border_grey']}; border-radius: 8px;">
+            <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; border: 1px solid {BRAND_COLORS['border_grey']}; border-radius: 8px;">
     """
 
     if booking_id:
         html += f"""
-                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
-                    <td style="padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                <tr style="background-color: {BRAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; font-weight: 600; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         Inquiry ID
                     </td>
-                    <td style="padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 600; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         {booking_id}
                     </td>
                 </tr>
@@ -1175,21 +1173,21 @@ def format_inquiry_received_email(parsed: Dict, guest_email: str, booking_id: st
         dates_str = ', '.join(dates)
         html += f"""
                 <tr style="background-color: #ffffff;">
-                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         <strong>📅 Requested Dates</strong>
                     </td>
-                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         {dates_str}
                     </td>
                 </tr>
         """
 
     html += f"""
-                <tr style="background-color: {THE_ISLAND_COLORS['light_grey']};">
-                    <td style="padding: 15px 12px; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                <tr style="background-color: {BRAND_COLORS['light_grey']};">
+                    <td style="padding: 15px 12px; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         <strong>👥 Players</strong>
                     </td>
-                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {THE_ISLAND_COLORS['border_grey']};">
+                    <td style="padding: 15px 12px; text-align: right; font-weight: 700; border-bottom: 1px solid {BRAND_COLORS['border_grey']};">
                         {player_count}
                     </td>
                 </tr>
@@ -1197,16 +1195,16 @@ def format_inquiry_received_email(parsed: Dict, guest_email: str, booking_id: st
                     <td style="padding: 18px 12px; font-weight: 700;">
                         <strong>💶 Estimated Green Fee</strong>
                     </td>
-                    <td style="padding: 18px 12px; text-align: right; color: {THE_ISLAND_COLORS['royal_blue']}; font-size: 22px; font-weight: 700;">
+                    <td style="padding: 18px 12px; text-align: right; color: {BRAND_COLORS['royal_blue']}; font-size: 22px; font-weight: 700;">
                         €{player_count * PER_PLAYER_FEE:.2f}
                     </td>
                 </tr>
             </table>
         </div>
 
-        <div style="background: #e0f2fe; border-left: 4px solid {THE_ISLAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
+        <div style="background: #e0f2fe; border-left: 4px solid {BRAND_COLORS['navy_primary']}; padding: 20px; border-radius: 8px; margin: 30px 0;">
             <p style="margin: 0; font-size: 15px; line-height: 1.7;">
-                <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">📞 What Happens Next:</strong>
+                <strong style="color: {BRAND_COLORS['navy_primary']};">📞 What Happens Next:</strong>
             </p>
             <p style="margin: 10px 0 0 0; font-size: 14px; line-height: 1.7;">
                 Our team has received your inquiry and will check availability for your requested dates. We'll respond within 24 hours with available tee times and booking options.
@@ -1214,21 +1212,21 @@ def format_inquiry_received_email(parsed: Dict, guest_email: str, booking_id: st
         </div>
 
         <div class="info-box">
-            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
+            <h3 style="color: {BRAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
                 📞 Contact Us Directly
             </h3>
             <p style="margin: 5px 0;">For immediate assistance, please contact us:</p>
-            <p style="margin: 8px 0;"><strong>Email:</strong> <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {THE_ISLAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a></p>
-            <p style="margin: 8px 0;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: {THE_ISLAND_COLORS['navy_primary']};">+353 1 843 6205</a></p>
+            <p style="margin: 8px 0;"><strong>Email:</strong> <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {BRAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a></p>
+            <p style="margin: 8px 0;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: {BRAND_COLORS['navy_primary']};">+353 1 843 6205</a></p>
         </div>
 
-        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
-            Thank you for choosing The Island Golf Club.
+        <p style="color: {BRAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
+            Thank you for choosing our golf club.
         </p>
 
-        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
+        <p style="color: {BRAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
             Best regards,<br>
-            <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club Team</strong>
+            <strong style="color: {BRAND_COLORS['navy_primary']};">Golf Club Bookings Team</strong>
         </p>
     """
 
@@ -1286,7 +1284,7 @@ def process_staff_confirmation_async(booking_id: str, booking: Dict):
                 # Send confirmation email with payment details
                 logging.info(f"   Sending confirmation email to {customer_email}...")
                 html_email = format_confirmation_email(booking)
-                subject_line = "Booking Confirmed - The Island Golf Club"
+                subject_line = "Booking Confirmed - Golf Club"
                 send_email_sendgrid(customer_email, subject_line, html_email)
 
                 # Update note to reflect confirmation email sent
@@ -1334,7 +1332,7 @@ def process_booking_request_async(booking_id: str, sender_email: str, timestamp:
                 # Send acknowledgment email
                 logging.info(f"   Sending acknowledgment email to {sender_email}...")
                 html_email = format_acknowledgment_email(booking_data)
-                subject_line = "Your Booking Request - The Island Golf Club"
+                subject_line = "Your Booking Request - Golf Club"
                 send_email_sendgrid(sender_email, subject_line, html_email)
 
                 # Update note to reflect acknowledgment sent
@@ -1394,7 +1392,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                         # Send inquiry email with available times
                         logging.info(f"   ✅ Found {len(results)} available times")
                         html_email = format_inquiry_email(results, players, sender_email, booking_id)
-                        subject_line = "Available Tee Times at The Island Golf Club"
+                        subject_line = "Available Tee Times at Golf Club"
                         send_email_sendgrid(sender_email, subject_line, html_email)
 
                         # Update status
@@ -1406,7 +1404,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                         # No availability
                         logging.info(f"   ⚠️  No availability found")
                         html_email = format_no_availability_email(players, guest_email=sender_email, dates=dates)
-                        subject_line = "Tee Time Availability - The Island Golf Club"
+                        subject_line = "Tee Time Availability - Golf Club"
                         send_email_sendgrid(sender_email, subject_line, html_email)
 
                         update_booking_in_db(booking_id, {
@@ -1417,7 +1415,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                     logging.warning(f"   API returned non-200 status: {response.status_code}")
                     # Send fallback email
                     html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
-                    subject_line = "Tee Time Inquiry - The Island Golf Club"
+                    subject_line = "Tee Time Inquiry - Golf Club"
                     send_email_sendgrid(sender_email, subject_line, html_email)
 
                     update_booking_in_db(booking_id, {
@@ -1429,7 +1427,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                 logging.error(f"   ❌ API error: {e}")
                 # Send fallback email
                 html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
-                subject_line = "Tee Time Inquiry - The Island Golf Club"
+                subject_line = "Tee Time Inquiry - Golf Club"
                 send_email_sendgrid(sender_email, subject_line, html_email)
 
                 update_booking_in_db(booking_id, {
@@ -1440,7 +1438,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
             # No dates found - send "please provide dates" email
             logging.info(f"   ℹ️  No dates provided")
             html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
-            subject_line = "Tee Time Inquiry - The Island Golf Club"
+            subject_line = "Tee Time Inquiry - Golf Club"
             send_email_sendgrid(sender_email, subject_line, html_email)
 
             update_booking_in_db(booking_id, {
@@ -1508,7 +1506,7 @@ def is_staff_confirmation(subject: str, body: str, from_email: str) -> bool:
     subject_lower = subject.lower() if subject else ""
     body_lower = body.lower() if body else ""
 
-    # Check if email is from staff domain (bookings@theislandgolfclub.ie or similar)
+    # Check if email is from staff domain (bookings@bookings.teemail.io or similar)
     # For now, we'll detect based on keywords since staff will manually trigger this
     confirmation_keywords = ['confirm booking', 'confirmed', 'approve booking', 'booking confirmed']
 
@@ -1718,7 +1716,7 @@ def add_to_waitlist(guest_email: str, dates: list, preferred_time: str, players:
             preferred_time or 'Flexible',
             'Flexible',
             players,
-            'The Island Golf Club',
+            'Golf Club',
             'Waiting',
             5,
             DEFAULT_COURSE_ID
@@ -1749,12 +1747,12 @@ def send_waitlist_confirmation_email(guest_email: str, waitlist_id: str, dates: 
             <p style="margin: 10px 0 0 0; opacity: 0.9;">Waitlist ID: {waitlist_id}</p>
         </div>
 
-        <p style="color: {THE_ISLAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
-            Thank you for joining our waitlist at <strong style="color: {THE_ISLAND_COLORS['navy_primary']};">The Island Golf Club</strong>.
+        <p style="color: {BRAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8;">
+            Thank you for joining our waitlist at <strong style="color: {BRAND_COLORS['navy_primary']};">Golf Club</strong>.
         </p>
 
-        <div style="background: {THE_ISLAND_COLORS['light_grey']}; border-radius: 8px; padding: 20px; margin: 25px 0;">
-            <h3 style="color: {THE_ISLAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 15px 0;">
+        <div style="background: {BRAND_COLORS['light_grey']}; border-radius: 8px; padding: 20px; margin: 25px 0;">
+            <h3 style="color: {BRAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 15px 0;">
                 📋 Your Waitlist Details
             </h3>
             <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse: collapse;">
@@ -1788,15 +1786,15 @@ def send_waitlist_confirmation_email(guest_email: str, waitlist_id: str, dates: 
             </ul>
         </div>
 
-        <p style="color: {THE_ISLAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8;">
+        <p style="color: {BRAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8;">
             If you have any questions or need to update your waitlist request, please contact us at
-            <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {THE_ISLAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a>.
+            <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {BRAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a>.
         </p>
     """
 
     html += get_email_footer()
 
-    send_email_sendgrid(guest_email, "Waitlist Confirmation - The Island Golf Club", html)
+    send_email_sendgrid(guest_email, "Waitlist Confirmation - Golf Club", html)
     logging.info(f"✅ Waitlist confirmation email sent to {guest_email}")
 
 
@@ -1861,7 +1859,7 @@ def health():
 
     return jsonify({
         'status': 'healthy',
-        'service': 'The Island Email Bot - Inquiry → Requested Flow',
+        'service': 'Golf Club Email Bot - Inquiry → Requested Flow',
         'database': db_status,
         'flow': 'Inquiry → Requested'
     })
@@ -2203,7 +2201,7 @@ def api_update_booking(booking_id):
 # INITIALIZE
 # ============================================================================
 logging.info("="*80)
-logging.info("🌐 The Island Golf Club - Email Bot")
+logging.info("🌐 Golf Club - Email Bot")
 logging.info("="*80)
 logging.info("📧 Email Flow: Inquiry → Requested")
 logging.info("✅ Step 1: Customer Inquiry → Status: 'Inquiry'")
