@@ -918,6 +918,13 @@ def save_booking_to_db(booking_data: dict):
         logging.info(f"   Customer: {booking_data.get('guest_email')}")
         logging.info(f"   Players: {booking_data.get('players')}")
         logging.info(f"   Date: {booking_data.get('date')}")
+        logging.info(f"   Status: {booking_data.get('status')}")
+        logging.info(f"   Club: {booking_data.get('club')}")
+
+        # Warn if club field is missing (dashboard won't show these bookings)
+        if not booking_data.get('club'):
+            logging.warning("⚠️  WARNING: Club field is empty! Dashboard won't display this booking.")
+            logging.warning(f"   DEFAULT_COURSE_ID = {DEFAULT_COURSE_ID}")
 
         conn = get_db_connection()
         if not conn:
