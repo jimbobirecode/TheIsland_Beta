@@ -81,7 +81,7 @@ DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "theisland")
 DATABASE_CLUB_ID = os.getenv("DATABASE_CLUB_ID", os.getenv("DEFAULT_COURSE_ID", "theisland"))
 
 # Tracking email for confirmation webhooks
-TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "theisland")
+TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "clubname")
 
 # Club booking email (appears in mailto links)
 CLUB_BOOKING_EMAIL = os.getenv("CLUB_BOOKING_EMAIL", "clubname@bookings.teemail.io")
