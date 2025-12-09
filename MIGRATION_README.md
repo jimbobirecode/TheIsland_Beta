@@ -16,7 +16,17 @@ This update fixes two critical bugs preventing inquiries from being saved and di
 
 ## Required Actions
 
-### 1. Run Database Migration
+### 1. Check Current Status Values (Optional but Recommended)
+
+First, check what status values currently exist in your database:
+
+```bash
+psql $DATABASE_URL -f check_current_status_values.sql
+```
+
+This will show you what data exists before migration.
+
+### 2. Run Database Migration
 
 Connect to your production PostgreSQL database and run:
 
@@ -24,25 +34,32 @@ Connect to your production PostgreSQL database and run:
 psql $DATABASE_URL -f migration_fix_status_constraint.sql
 ```
 
-Or manually execute:
+This migration script will:
+1. Show current status values in the database
+2. Update any lowercase status values to capitalized versions
+3. Drop the old constraint
+4. Add the new constraint with all valid status values
+5. Verify the migration succeeded
 
-```sql
--- Drop the old constraint
-ALTER TABLE bookings DROP CONSTRAINT IF EXISTS valid_status;
+**What it does:**
+- `'provisional'` → `'Provisional'`
+- `'confirmed'` → `'Confirmed'`
+- `'cancelled'` → `'Cancelled'`
+- `'completed'` → `'Completed'`
 
--- Add the new constraint with all valid status values
-ALTER TABLE bookings ADD CONSTRAINT valid_status
-    CHECK (status IN ('Processing', 'Inquiry', 'Requested', 'Confirmed', 'provisional', 'confirmed', 'cancelled', 'completed'));
-```
+Then adds support for new status values:
+- `'Processing'` - Temporary while checking availability
+- `'Inquiry'` - Initial inquiry with available times sent
+- `'Requested'` - Customer requested specific booking
 
-### 2. Deploy Updated Code
+### 3. Deploy Updated Code
 
 The following files have been updated:
 - `island_email_bot.py` - Fixed database queries to use correct club ID
 - `schema.sql` - Updated for new installations
 - `migration_fix_status_constraint.sql` - Migration for existing databases
 
-### 3. Verify Fix
+### 4. Verify Fix
 
 After deploying:
 
@@ -59,10 +76,9 @@ The system now supports these status values:
 - **Inquiry** - Initial inquiry received, available times sent
 - **Requested** - Customer clicked "Book Now" and requested specific time
 - **Confirmed** - Staff manually confirmed the booking
-- **provisional** - (Legacy) Provisional booking
-- **confirmed** - (Legacy) Confirmed booking
-- **cancelled** - Booking was cancelled
-- **completed** - Booking is complete
+- **Provisional** - Provisional booking (not yet confirmed)
+- **Cancelled** - Booking was cancelled
+- **Completed** - Booking is complete
 
 ## Environment Variables
 
