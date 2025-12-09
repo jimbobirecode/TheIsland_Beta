@@ -839,7 +839,7 @@ def format_inquiry_email(results: list, player_count: int, guest_email: str, boo
             <p style="margin: 5px 0;"><strong>Step 1:</strong> Click "Book Now" for your preferred time</p>
             <p style="margin: 5px 0;"><strong>Step 2:</strong> Your email client will open with booking details</p>
             <p style="margin: 5px 0;"><strong>Step 3:</strong> Send the email to request your tee time</p>
-            <p style="margin-top: 12px; font-style: italic; font-size: 14px;">Or call us at <strong style="color: {BRAND_COLORS['navy_primary']};">+353 1 843 6205</strong></p>
+            <p style="margin-top: 12px; font-style: italic; font-size: 14px;">Questions? Reply to this email and we'll be happy to help.</p>
         </div>
     """
 
@@ -1016,7 +1016,7 @@ def format_confirmation_email(booking_data: Dict) -> str:
                 <strong>Bank Details:</strong> Please contact us for bank transfer details
             </p>
             <p style="margin: 10px 0 0 0; font-size: 14px; color: {BRAND_COLORS['text_medium']}; font-style: italic;">
-                💡 For card payment or bank transfer details, please reply to this email or call us at <strong>+353 1 843 6205</strong>
+                💡 For card payment or bank transfer details, please reply to this email.
             </p>
         </div>
 
@@ -1031,13 +1031,12 @@ def format_confirmation_email(booking_data: Dict) -> str:
         </div>
 
         <p style="color: {BRAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 30px 0;">
-            We look forward to welcoming you to our championship links course. If you have any questions, please don't hesitate to contact us.
+            We look forward to welcoming you to our golf club. If you have any questions, please don't hesitate to contact us.
         </p>
 
         <div style="text-align: center; margin: 30px 0; padding: 20px; background-color: {BRAND_COLORS['light_grey']}; border-radius: 8px;">
             <p style="margin: 0 0 10px 0; color: {BRAND_COLORS['text_medium']}; font-size: 14px;">Contact Us</p>
             <p style="margin: 5px 0;"><strong style="color: {BRAND_COLORS['navy_primary']};">📧 Email:</strong> {FROM_EMAIL}</p>
-            <p style="margin: 5px 0;"><strong style="color: {BRAND_COLORS['navy_primary']};">📞 Phone:</strong> +353 1 843 6205</p>
         </div>
 
         <p style="color: {BRAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
@@ -1125,11 +1124,10 @@ Thank you.""")
             </h3>
             <p style="margin: 5px 0;">We would be delighted to assist you in finding alternative dates:</p>
             <p style="margin: 8px 0;"><strong>Email:</strong> <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {BRAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a></p>
-            <p style="margin: 8px 0;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: {BRAND_COLORS['navy_primary']};">+353 1 843 6205</a></p>
         </div>
 
         <p style="color: {BRAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 20px 0 0 0;">
-            We look forward to welcoming you to our championship links course.
+            We look forward to welcoming you to our golf club.
         </p>
     """
 
@@ -1220,7 +1218,6 @@ def format_inquiry_received_email(parsed: Dict, guest_email: str, booking_id: st
             </h3>
             <p style="margin: 5px 0;">For immediate assistance, please contact us:</p>
             <p style="margin: 8px 0;"><strong>Email:</strong> <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {BRAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a></p>
-            <p style="margin: 8px 0;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: {BRAND_COLORS['navy_primary']};">+353 1 843 6205</a></p>
         </div>
 
         <p style="color: {BRAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
