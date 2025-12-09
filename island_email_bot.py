@@ -1959,6 +1959,7 @@ def handle_inbound_email():
         logging.info(f"📨 INBOUND WEBHOOK")
         logging.info(f"From: {from_email}")
         logging.info(f"Subject: {subject}")
+        logging.info(f"Body (first 200 chars): {body[:200] if body else 'EMPTY'}")
         logging.info(f"Message-ID: {message_id}")
         logging.info("="*80)
 
