@@ -45,8 +45,11 @@ CORE_API_URL = os.getenv("CORE_API_URL", "https://core-new-aku3.onrender.com")
 # External Dashboard API endpoint
 DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://theisland-dashboard.onrender.com")
 
-# Default course for bookings
+# Default course for bookings (used for API calls to fetch tee times)
 DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "theisland")
+
+# Database club ID (used for dashboard filtering - should match dashboard user's customer_id)
+DATABASE_CLUB_ID = os.getenv("DATABASE_CLUB_ID", os.getenv("DEFAULT_COURSE_ID", "theisland"))
 
 # Tracking email for confirmation webhooks (separate from course ID)
 TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "theisland")
@@ -1892,7 +1895,7 @@ def log_provisional_booking(guest_email: str, parsed, dates: list, message_id: s
         "is_corporate": parsed.is_corporate,
         "company_name": parsed.company_name,
         "note": "Booking offer sent",
-        "club": DEFAULT_COURSE_ID,
+        "club": DATABASE_CLUB_ID,
         "club_name": FROM_NAME
     }
 
@@ -3532,7 +3535,7 @@ def api_convert_waitlist_to_booking(waitlist_id):
             'is_corporate': False,
             'company_name': None,
             'note': f"Converted from waitlist {waitlist_id}. {waitlist_item.get('notes', '')}",
-            'club': waitlist_item.get('club', DEFAULT_COURSE_ID),
+            'club': waitlist_item.get('club', DATABASE_CLUB_ID),
             'club_name': FROM_NAME
         }
 
