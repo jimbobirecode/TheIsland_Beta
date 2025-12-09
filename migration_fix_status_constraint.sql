@@ -16,8 +16,8 @@ UPDATE bookings SET status = 'Provisional' WHERE LOWER(status) = 'provisional';
 UPDATE bookings SET status = 'Cancelled' WHERE LOWER(status) = 'cancelled';
 UPDATE bookings SET status = 'Completed' WHERE LOWER(status) = 'completed';
 
--- Handle any other unexpected values (if any exist)
--- You can check what values need to be updated by running the SELECT above first
+-- Note: Booked, Pending, Rejected, Inquiry, Requested, Confirmed are already valid
+-- and will be preserved as-is in the new constraint
 
 -- Step 3: Drop the old constraint (if it exists)
 ALTER TABLE bookings DROP CONSTRAINT IF EXISTS valid_status;
@@ -29,6 +29,9 @@ ALTER TABLE bookings ADD CONSTRAINT valid_status
         'Inquiry',      -- Initial inquiry received, available times sent
         'Requested',    -- Customer clicked "Book Now" and requested specific time
         'Confirmed',    -- Staff manually confirmed the booking
+        'Booked',       -- Legacy: Booked status
+        'Pending',      -- Legacy: Pending confirmation
+        'Rejected',     -- Legacy: Rejected booking
         'Provisional',  -- Legacy: Provisional booking
         'Cancelled',    -- Booking was cancelled
         'Completed'     -- Booking is complete
