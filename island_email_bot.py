@@ -1403,16 +1403,21 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
 
                 # Add retry logic for 502 errors and timeouts
                 max_retries = 2
+                response = None
                 for attempt in range(max_retries + 1):
                     try:
                         logging.info(f"   🔄 Attempt {attempt + 1}/{max_retries + 1}")
+                        logging.info(f"   ⏰ Making API call with 180s timeout...")
+                        start_time = time.time()
+
                         response = requests.post(
                             api_url,
                             json=payload,
-                            timeout=120
+                            timeout=180  # Increased from 120s to 180s for slow BRS queries
                         )
 
-                        logging.info(f"   ✅ Core API responded with status: {response.status_code}")
+                        elapsed = time.time() - start_time
+                        logging.info(f"   ✅ Core API responded with status: {response.status_code} (took {elapsed:.1f}s)")
 
                         # If successful or not a 502, break the retry loop
                         if response.status_code != 502:
@@ -1422,12 +1427,25 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                         if attempt < max_retries:
                             logging.warning(f"   ⚠️  Got 502, retrying (attempt {attempt + 2}/{max_retries + 1})...")
                             time.sleep(10)  # Increased delay from 5s to 10s
-                    except requests.Timeout:
-                        logging.error(f"   ❌ Timeout on attempt {attempt + 1}")
+                    except requests.Timeout as timeout_error:
+                        elapsed = time.time() - start_time
+                        logging.error(f"   ❌ Timeout on attempt {attempt + 1} (waited {elapsed:.1f}s)")
+                        if attempt == max_retries:
+                            logging.error(f"   ❌ All {max_retries + 1} attempts timed out - giving up")
+                            raise
+                        logging.info(f"   ⏳ Waiting 10 seconds before retry...")
+                        time.sleep(10)
+                    except Exception as api_error:
+                        logging.error(f"   ❌ Unexpected error on attempt {attempt + 1}: {api_error}")
                         if attempt == max_retries:
                             raise
                         logging.info(f"   ⏳ Waiting 10 seconds before retry...")
                         time.sleep(10)
+
+                # Check if we got a response at all
+                if response is None:
+                    logging.error(f"   ❌ No response received from Core API after {max_retries + 1} attempts")
+                    raise Exception("Core API did not respond")
 
                 # Log response details for debugging
                 if response.status_code != 200:
