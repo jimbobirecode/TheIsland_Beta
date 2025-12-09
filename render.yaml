@@ -33,7 +33,7 @@ services:
       - key: TRACKING_EMAIL_PREFIX
         value: clubname
       - key: CLUB_BOOKING_EMAIL
-        value: bookings@theislandgolfclub.ie
+        value: clubname@bookings.teemail.io
       - key: CORE_API_URL
         value: https://core-new-aku3.onrender.com
       - key: DASHBOARD_API_URL
