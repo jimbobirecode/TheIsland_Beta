@@ -74,8 +74,11 @@ CORE_API_URL = os.getenv("CORE_API_URL", "https://core-new-aku3.onrender.com")
 # Dashboard API endpoint
 DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://theisland-dashboard.onrender.com")
 
-# Default course for bookings
+# Default course for bookings (used for API calls to fetch tee times)
 DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "theisland")
+
+# Database club ID (used for dashboard filtering - should match dashboard user's customer_id)
+DATABASE_CLUB_ID = os.getenv("DATABASE_CLUB_ID", os.getenv("DEFAULT_COURSE_ID", "theisland"))
 
 # Tracking email for confirmation webhooks
 TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "theisland")
@@ -2121,7 +2124,7 @@ def handle_inbound_email():
             "total": PER_PLAYER_FEE * parsed['players'],
             "status": "Processing",  # ← Temporary status while we check availability
             "note": "Webhook received, checking availability...",
-            "club": DEFAULT_COURSE_ID,
+            "club": DATABASE_CLUB_ID,
             "club_name": FROM_NAME
         }
 

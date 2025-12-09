@@ -28,8 +28,10 @@ services:
         value: "325.00"
       - key: DEFAULT_COURSE_ID
         value: theisland
+      - key: DATABASE_CLUB_ID
+        value: teemail-demo
       - key: TRACKING_EMAIL_PREFIX
-        value: theisland
+        value: teemail-demo
       - key: CLUB_BOOKING_EMAIL
         value: bookings@theislandgolfclub.ie
       - key: CORE_API_URL
@@ -59,6 +61,8 @@ services:
         value: "325.00"
       - key: DEFAULT_COURSE_ID
         value: theisland
+      - key: DATABASE_CLUB_ID
+        value: teemail-demo
       - key: DASHBOARD_PASSWORD
         sync: false
 
