@@ -69,7 +69,9 @@ BOOKINGS_FILE = os.getenv("BOOKINGS_FILE", "provisional_bookings.jsonl")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Core API endpoint (for availability checking)
+# Core API (for checking tee time availability)
 CORE_API_URL = os.getenv("CORE_API_URL", "https://core-new-aku3.onrender.com")
+SKIP_AVAILABILITY_CHECK = os.getenv("SKIP_AVAILABILITY_CHECK", "false").lower() == "true"
 
 # Dashboard API endpoint
 DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://theisland-dashboard.onrender.com")
@@ -1371,6 +1373,22 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
     try:
         logging.info(f"🔄 Background processing started for booking {booking_id}")
 
+        # Check if we should skip availability checks
+        if SKIP_AVAILABILITY_CHECK:
+            logging.info(f"⚠️  SKIP_AVAILABILITY_CHECK is enabled - skipping Core API call")
+            # Send simple acknowledgment email without checking availability
+            html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
+            subject_line = "Tee Time Inquiry Received - Golf Club"
+            send_email_sendgrid(sender_email, subject_line, html_email)
+
+            update_booking_in_db(booking_id, {
+                'status': 'Inquiry',
+                'note': 'Initial inquiry received. Availability check skipped (manual follow-up needed).'
+            })
+
+            logging.info(f"✅ Background processing completed for booking {booking_id} (no API check)")
+            return
+
         if dates:
             try:
                 # Make the API call (can take up to 120 seconds)
@@ -1959,7 +1977,9 @@ def handle_inbound_email():
         logging.info(f"📨 INBOUND WEBHOOK")
         logging.info(f"From: {from_email}")
         logging.info(f"Subject: {subject}")
+        logging.info(f"Body (first 200 chars): {body[:200] if body else 'EMPTY'}")
         logging.info(f"Message-ID: {message_id}")
+        logging.info(f"SKIP_AVAILABILITY_CHECK: {SKIP_AVAILABILITY_CHECK}")
         logging.info("="*80)
 
         # CRITICAL: Check for duplicate FIRST (prevents retries from processing)
