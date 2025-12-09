@@ -178,6 +178,7 @@ def save_booking_to_db(booking_data: dict):
         logging.info(f"   Customer: {booking_data.get('guest_email')}")
         logging.info(f"   Players: {booking_data.get('players')}")
         logging.info(f"   Status: {booking_data.get('status')}")
+        logging.info(f"   Club: {booking_data.get('club')}")
 
         conn = get_db_connection()
         if not conn:
@@ -2256,6 +2257,8 @@ if init_db_pool():
 logging.info(f"📧 SendGrid: {FROM_EMAIL}")
 logging.info(f"📬 Club Booking Email: {CLUB_BOOKING_EMAIL}")
 logging.info(f"📮 Tracking Email: {TRACKING_EMAIL_PREFIX}@bookings.teemail.io")
+logging.info(f"🏌️  Database Club ID: {DATABASE_CLUB_ID}")
+logging.info(f"🏌️  Default Course ID: {DEFAULT_COURSE_ID}")
 logging.info(f"🔗 Core API: {CORE_API_URL}")
 logging.info("="*80)
 
