@@ -1387,13 +1387,41 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                 logging.info(f"   🔗 Calling Core API: {api_url}")
                 logging.info(f"   📦 Payload: {payload}")
 
-                response = requests.post(
-                    api_url,
-                    json=payload,
-                    timeout=120
-                )
+                # Add retry logic for 502 errors
+                max_retries = 2
+                for attempt in range(max_retries + 1):
+                    try:
+                        response = requests.post(
+                            api_url,
+                            json=payload,
+                            timeout=120
+                        )
 
-                logging.info(f"   ✅ Core API responded with status: {response.status_code}")
+                        logging.info(f"   ✅ Core API responded with status: {response.status_code}")
+
+                        # If successful or not a 502, break the retry loop
+                        if response.status_code != 502:
+                            break
+
+                        # If 502 and we have retries left, wait and try again
+                        if attempt < max_retries:
+                            logging.warning(f"   ⚠️  Got 502, retrying (attempt {attempt + 2}/{max_retries + 1})...")
+                            import time
+                            time.sleep(2)
+                    except requests.Timeout:
+                        logging.error(f"   ❌ Timeout on attempt {attempt + 1}")
+                        if attempt == max_retries:
+                            raise
+                        time.sleep(2)
+
+                # Log response details for debugging
+                if response.status_code != 200:
+                    logging.error(f"   ❌ API Error Response:")
+                    logging.error(f"      Status: {response.status_code}")
+                    try:
+                        logging.error(f"      Body: {response.text[:500]}")
+                    except:
+                        pass
 
                 if response.status_code == 200:
                     api_data = response.json()
