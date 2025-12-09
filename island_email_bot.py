@@ -1388,15 +1388,23 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                 logging.info(f"   📦 Payload: {payload}")
 
                 # Try to wake up the API first with a health check
+                # Render free tier services can take 60+ seconds to cold start
+                import time
                 try:
                     health_url = f"{CORE_API_URL}/health"
                     logging.info(f"   🏥 Warming up API with health check: {health_url}")
-                    health_response = requests.get(health_url, timeout=30)
+                    health_response = requests.get(health_url, timeout=90)  # Increased from 30s to 90s
                     logging.info(f"   ✅ Health check responded: {health_response.status_code}")
+                    # Give the service extra time to fully wake up
+                    logging.info(f"   ⏳ Waiting 3 seconds for service to fully initialize...")
+                    time.sleep(3)
                 except Exception as health_error:
-                    logging.warning(f"   ⚠️  Health check failed: {health_error}")
+                    logging.warning(f"   ⚠️  Health check failed (continuing anyway): {health_error}")
+                    # Wait longer if health check failed - service might still be waking
+                    logging.info(f"   ⏳ Waiting 10 seconds before trying main request...")
+                    time.sleep(10)
 
-                # Add retry logic for 502 errors
+                # Add retry logic for 502 errors and timeouts
                 max_retries = 2
                 for attempt in range(max_retries + 1):
                     try:
@@ -1416,13 +1424,13 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                         # If 502 and we have retries left, wait and try again
                         if attempt < max_retries:
                             logging.warning(f"   ⚠️  Got 502, retrying (attempt {attempt + 2}/{max_retries + 1})...")
-                            import time
-                            time.sleep(5)  # Increased delay
+                            time.sleep(10)  # Increased delay from 5s to 10s
                     except requests.Timeout:
                         logging.error(f"   ❌ Timeout on attempt {attempt + 1}")
                         if attempt == max_retries:
                             raise
-                        time.sleep(5)
+                        logging.info(f"   ⏳ Waiting 10 seconds before retry...")
+                        time.sleep(10)
 
                 # Log response details for debugging
                 if response.status_code != 200:
