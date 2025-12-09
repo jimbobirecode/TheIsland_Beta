@@ -1384,24 +1384,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                 logging.info(f"   🔗 Calling Core API: {api_url}")
                 logging.info(f"   📦 Payload: {payload}")
 
-                # Try to wake up the API first with a health check
-                # Render free tier services can take 60+ seconds to cold start
-                import time
-                try:
-                    health_url = f"{CORE_API_URL}/health"
-                    logging.info(f"   🏥 Warming up API with health check: {health_url}")
-                    health_response = requests.get(health_url, timeout=90)  # Increased from 30s to 90s
-                    logging.info(f"   ✅ Health check responded: {health_response.status_code}")
-                    # Give the service extra time to fully wake up
-                    logging.info(f"   ⏳ Waiting 3 seconds for service to fully initialize...")
-                    time.sleep(3)
-                except Exception as health_error:
-                    logging.warning(f"   ⚠️  Health check failed (continuing anyway): {health_error}")
-                    # Wait longer if health check failed - service might still be waking
-                    logging.info(f"   ⏳ Waiting 10 seconds before trying main request...")
-                    time.sleep(10)
-
-                # Add retry logic for 502 errors and timeouts
+                # Make the API call with retry logic
                 max_retries = 2
                 for attempt in range(max_retries + 1):
                     try:
