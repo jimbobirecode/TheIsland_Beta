@@ -9,22 +9,18 @@ FROM bookings
 GROUP BY status
 ORDER BY status;
 
--- Step 2: Update any invalid status values to their correct equivalents
--- Map old lowercase values to new capitalized values
-UPDATE bookings SET status = 'Confirmed' WHERE status = 'confirmed';
-UPDATE bookings SET status = 'Provisional' WHERE LOWER(status) = 'provisional';
-UPDATE bookings SET status = 'Cancelled' WHERE LOWER(status) = 'cancelled';
-UPDATE bookings SET status = 'Completed' WHERE LOWER(status) = 'completed';
-
--- Note: Booked, Pending, Rejected, Inquiry, Requested, Confirmed are already valid
--- and will be preserved as-is in the new constraint
+-- Step 2: No updates needed!
+-- The new constraint accepts BOTH uppercase AND lowercase for backwards compatibility
+-- This means existing code using lowercase values will continue to work
 
 -- Step 3: Drop the old constraint (if it exists)
 ALTER TABLE bookings DROP CONSTRAINT IF EXISTS valid_status;
 
 -- Step 4: Add the new constraint with all valid status values
+-- Includes BOTH uppercase and lowercase for backwards compatibility
 ALTER TABLE bookings ADD CONSTRAINT valid_status
     CHECK (status IN (
+        -- Current flow (uppercase - preferred)
         'Processing',   -- Temporary status while checking availability
         'Inquiry',      -- Initial inquiry received, available times sent
         'Requested',    -- Customer clicked "Book Now" and requested specific time
@@ -34,7 +30,9 @@ ALTER TABLE bookings ADD CONSTRAINT valid_status
         'Rejected',     -- Legacy: Rejected booking
         'Provisional',  -- Legacy: Provisional booking
         'Cancelled',    -- Booking was cancelled
-        'Completed'     -- Booking is complete
+        'Completed',    -- Booking is complete
+        -- Lowercase versions (for backwards compatibility)
+        'confirmed', 'provisional', 'cancelled', 'completed', 'booked', 'pending', 'rejected'
     ));
 
 -- Step 5: Verify the constraint was added successfully
