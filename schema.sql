@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     golf_dates TEXT[],
     golf_courses TEXT[],
     selected_tee_times TEXT[],
-    CONSTRAINT valid_status CHECK (status IN ('Processing', 'Inquiry', 'Requested', 'Confirmed', 'provisional', 'confirmed', 'cancelled', 'completed'))
+    CONSTRAINT valid_status CHECK (status IN ('Processing', 'Inquiry', 'Requested', 'Confirmed', 'Provisional', 'Cancelled', 'Completed'))
 );
 
 -- Create indexes for common queries
