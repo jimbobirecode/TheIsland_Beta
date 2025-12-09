@@ -78,7 +78,7 @@ DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://theisland-dashboard.
 DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "theisland")
 
 # Database club ID (used for dashboard filtering - should match dashboard user's customer_id)
-DATABASE_CLUB_ID = os.getenv("DATABASE_CLUB_ID", os.getenv("DEFAULT_COURSE_ID", "theisland"))
+DATABASE_CLUB_ID = os.getenv("DATABASE_CLUB_ID", "demo")
 
 # Tracking email for confirmation webhooks
 TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "clubname")
