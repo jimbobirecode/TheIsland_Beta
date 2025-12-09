@@ -132,8 +132,8 @@ def get_email_header(course_name: str) -> str:
             }}
 
             .header {{
-                background: linear-gradient(135deg, #059669 0%, #0a0e1a 100%);
-                background-color: #059669;
+                background: linear-gradient(135deg, #1e3a5f 0%, #0f1e30 100%);
+                background-color: #1e3a5f;
                 padding: 40px 30px;
                 text-align: center;
                 color: #ffffff;
@@ -147,7 +147,7 @@ def get_email_header(course_name: str) -> str:
                 right: -50px;
                 width: 200px;
                 height: 200px;
-                background: radial-gradient(circle, rgba(251, 191, 36, 0.2) 0%, transparent 70%);
+                background: radial-gradient(circle, rgba(201, 169, 97, 0.2) 0%, transparent 70%);
                 border-radius: 50%;
             }}
 
@@ -163,7 +163,7 @@ def get_email_header(course_name: str) -> str:
 
             .header p {{
                 margin: 0;
-                color: #fbbf24;
+                color: #c9a961;
                 font-size: 16px;
                 font-weight: 600;
                 position: relative;
@@ -174,10 +174,10 @@ def get_email_header(course_name: str) -> str:
                 display: inline-block;
                 margin-top: 8px;
                 padding: 4px 12px;
-                background: rgba(251, 191, 36, 0.2);
-                border: 1px solid #fbbf24;
+                background: rgba(201, 169, 97, 0.2);
+                border: 1px solid #c9a961;
                 border-radius: 20px;
-                color: #fbbf24;
+                color: #c9a961;
                 font-size: 12px;
                 letter-spacing: 1px;
             }}
@@ -204,8 +204,8 @@ def get_email_header(course_name: str) -> str:
             }}
 
             .tee-table thead {{
-                background: linear-gradient(135deg, #059669 0%, #0a0e1a 100%);
-                background-color: #059669;
+                background: linear-gradient(135deg, #1e3a5f 0%, #0f1e30 100%);
+                background-color: #1e3a5f;
                 color: #ffffff;
             }}
 
@@ -241,8 +241,8 @@ def get_email_header(course_name: str) -> str:
             }}
 
             .button-cell {{
-                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-                background-color: #10b981;
+                background: linear-gradient(135deg, #2d5f7e 0%, #1e3a5f 100%);
+                background-color: #2d5f7e;
                 padding: 10px 20px;
                 border-radius: 6px;
             }}
@@ -259,12 +259,12 @@ def get_email_header(course_name: str) -> str:
             }}
 
             .date-header {{
-                color: #059669;
+                color: #1e3a5f;
                 font-size: 24px;
                 font-weight: 700;
                 margin: 25px 0 15px 0;
                 padding-bottom: 10px;
-                border-bottom: 3px solid #fbbf24;
+                border-bottom: 3px solid #c9a961;
             }}
 
             .status-badge {{
@@ -286,11 +286,11 @@ def get_email_header(course_name: str) -> str:
                 font-weight: 600;
                 background: #fef3c7;
                 color: #92400e;
-                border: 1px solid #fbbf24;
+                border: 1px solid #c9a961;
             }}
 
             .alternative-date-section {{
-                border: 2px solid #fbbf24;
+                border: 2px solid #c9a961;
                 padding: 20px;
                 background: linear-gradient(to right, #FFFEF7 0%, #FFF9E6 100%);
                 background-color: #FFFEF7;
@@ -298,14 +298,14 @@ def get_email_header(course_name: str) -> str:
             }}
 
             .alt-date-row {{
-                border-left: 3px solid #fbbf24 !important;
+                border-left: 3px solid #c9a961 !important;
                 background-color: #FFFEF7 !important;
             }}
 
             .info-box {{
                 background: linear-gradient(to right, #f0f9ff 0%, #e0f2fe 100%);
                 background-color: #f0f9ff;
-                border-left: 4px solid #059669;
+                border-left: 4px solid #1e3a5f;
                 border-radius: 4px;
                 padding: 20px;
                 margin: 20px 0;
@@ -313,7 +313,7 @@ def get_email_header(course_name: str) -> str:
 
             .info-box h3 {{
                 margin: 0 0 10px 0;
-                color: #059669;
+                color: #1e3a5f;
                 font-size: 18px;
             }}
 
@@ -325,7 +325,7 @@ def get_email_header(course_name: str) -> str:
             .alternative-box {{
                 background: linear-gradient(to right, #fffbeb 0%, #fef3c7 100%);
                 background-color: #fffbeb;
-                border-left: 4px solid #fbbf24;
+                border-left: 4px solid #c9a961;
                 border-radius: 4px;
                 padding: 20px;
                 margin: 20px 0;
@@ -354,7 +354,7 @@ def get_email_header(course_name: str) -> str:
 
             .group-box {{
                 background-color: #f9fafb;
-                border-left: 4px solid #059669;
+                border-left: 4px solid #1e3a5f;
                 border-radius: 4px;
                 padding: 20px;
                 margin: 20px 0;
@@ -362,13 +362,13 @@ def get_email_header(course_name: str) -> str:
 
             .group-box h3 {{
                 margin: 0 0 10px 0;
-                color: #059669;
+                color: #1e3a5f;
                 font-size: 18px;
             }}
 
             .warning-box {{
                 background-color: #fef3c7;
-                border-left: 4px solid #fbbf24;
+                border-left: 4px solid #c9a961;
                 border-radius: 4px;
                 padding: 20px;
                 margin: 20px 0;
@@ -381,20 +381,20 @@ def get_email_header(course_name: str) -> str:
             }}
 
             .footer {{
-                background: linear-gradient(135deg, #059669 0%, #0a0e1a 100%);
-                background-color: #059669;
+                background: linear-gradient(135deg, #1e3a5f 0%, #0f1e30 100%);
+                background-color: #1e3a5f;
                 padding: 30px;
                 text-align: center;
                 color: #ffffff;
             }}
 
             .footer strong {{
-                color: #fbbf24;
+                color: #c9a961;
                 font-size: 18px;
             }}
 
             .footer a {{
-                color: #fbbf24;
+                color: #c9a961;
                 text-decoration: none;
                 font-weight: 600;
             }}
@@ -407,7 +407,7 @@ def get_email_header(course_name: str) -> str:
 
             .price-highlight {{
                 font-weight: 700;
-                color: #059669;
+                color: #1e3a5f;
                 font-size: 16px;
             }}
 
@@ -429,18 +429,18 @@ def get_email_header(course_name: str) -> str:
                 <td style="padding: 20px; background-color: #f3f4f6;">
                     <table role="presentation" class="email-container" align="center" border="0" cellpadding="0" cellspacing="0" width="800" style="max-width: 800px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
                         <tr>
-                            <td class="header" style="background: linear-gradient(135deg, #059669 0%, #0a0e1a 100%); background-color: #059669; padding: 40px 30px; text-align: center; color: #ffffff; position: relative;">
+                            <td class="header" style="background: linear-gradient(135deg, #1e3a5f 0%, #0a0e1a 100%); background-color: #1e3a5f; padding: 40px 30px; text-align: center; color: #ffffff; position: relative;">
                                 <!--[if gte mso 9]>
                                 <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:800px;height:150px;">
-                                <v:fill type="gradient" color="#0a0e1a" color2="#059669" angle="135" />
+                                <v:fill type="gradient" color="#0a0e1a" color2="#1e3a5f" angle="135" />
                                 <v:textbox inset="40px,40px,40px,40px">
                                 <![endif]-->
                                 <div style="color: #ffffff;">
                                     <hr style="border: 0; height: 3px; background-color: #1923c2; margin: 20px auto; width: 100%; max-width: 600px;" />
-                                    <p style="margin: 0; color: #fbbf24; font-size: 16px; font-weight: 600;">
+                                    <p style="margin: 0; color: #c9a961; font-size: 16px; font-weight: 600;">
                                         Available Tee Times for Your Round
                                     </p>
-                                    <div class="est-badge" style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: rgba(251, 191, 36, 0.2); border: 1px solid #fbbf24; border-radius: 20px; color: #fbbf24; font-size: 12px; letter-spacing: 1px;">
+                                    <div class="est-badge" style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: rgba(201, 169, 97, 0.2); border: 1px solid #c9a961; border-radius: 20px; color: #c9a961; font-size: 12px; letter-spacing: 1px;">
                                         EST. 1892
                                     </div>
                                 </div>
@@ -461,10 +461,10 @@ def get_email_footer(course_name: str, from_email: str = "clubname@bookings.teem
                             </td>
                         </tr>
                         <tr>
-                            <td class="footer" style="background: linear-gradient(135deg, #059669 0%, #0a0e1a 100%); background-color: #059669; padding: 30px; text-align: center; color: #ffffff;">
+                            <td class="footer" style="background: linear-gradient(135deg, #1e3a5f 0%, #0a0e1a 100%); background-color: #1e3a5f; padding: 30px; text-align: center; color: #ffffff;">
                                 <!--[if gte mso 9]>
                                 <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:800px;height:180px;">
-                                <v:fill type="gradient" color="#0a0e1a" color2="#059669" angle="135" />
+                                <v:fill type="gradient" color="#0a0e1a" color2="#1e3a5f" angle="135" />
                                 <v:textbox inset="30px,30px,30px,30px">
                                 <![endif]-->
                                 <div style="color: #ffffff;">
@@ -472,16 +472,16 @@ def get_email_footer(course_name: str, from_email: str = "clubname@bookings.teem
                                         CHAMPIONSHIP LINKS GOLF
                                     </p>
                                     <p style="margin: 0;">
-                                        <strong style="color: #fbbf24; font-size: 18px;">{course_name}</strong>
+                                        <strong style="color: #c9a961; font-size: 18px;">{course_name}</strong>
                                     </p>
                                     <p class="tagline" style="color: rgba(255, 255, 255, 0.8); margin-top: 5px; font-style: italic;">
                                         Baltray, Co. Louth, Ireland • Est. 1892
                                     </p>
                                     <p style="margin-top: 25px; color: #ffffff;">
-                                        <strong>Contact:</strong> <a href="mailto:{from_email}" style="color: #fbbf24; text-decoration: none; font-weight: 600;">{from_email}</a>
+                                        <strong>Contact:</strong> <a href="mailto:{from_email}" style="color: #c9a961; text-decoration: none; font-weight: 600;">{from_email}</a>
                                     </p>
                                     <p style="margin-top: 5px; color: #ffffff;">
-                                        <strong>Telephone:</strong> <a href="tel:+353419881530" style="color: #fbbf24; text-decoration: none; font-weight: 600;">+353 41 988 1530</a>
+                                        <strong>Telephone:</strong> <a href="tel:+353419881530" style="color: #c9a961; text-decoration: none; font-weight: 600;">+353 41 988 1530</a>
                                     </p>
                                     <p style="margin-top: 20px; font-size: 11px; color: rgba(255, 255, 255, 0.6);">
                                         We look forward to welcoming you to our historic links
@@ -507,7 +507,7 @@ def create_book_button(booking_link: str, button_text: str = "Reserve Now") -> s
     return f"""
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 auto;">
         <tr>
-            <td class="button-cell" align="center" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); background-color: #10b981; padding: 10px 20px; border-radius: 6px; box-shadow: 0 2px 4px rgba(185, 28, 46, 0.3);">
+            <td class="button-cell" align="center" style="background: linear-gradient(135deg, #2d5f7e 0%, #1e3a5f 100%); background-color: #2d5f7e; padding: 10px 20px; border-radius: 6px; box-shadow: 0 2px 4px rgba(185, 28, 46, 0.3);">
                 <a href="{booking_link}" class="button-link" style="color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px;">
                     <span class="emoji">🗓️</span>{button_text}
                 </a>
@@ -533,7 +533,7 @@ def format_standard_booking_email_html(
     html = get_email_header(course_name)
     
     html += f"""
-        <p class="greeting">Thank you for your enquiry. We are delighted to present the following available tee times at <strong style="color: #059669;">{course_name}</strong>, one of Ireland's finest championship links courses:</p>
+        <p class="greeting">Thank you for your enquiry. We are delighted to present the following available tee times at <strong style="color: #1e3a5f;">{course_name}</strong>, one of Ireland's finest championship links courses:</p>
         
         <div class="info-box">
             <h3><span class="emoji">👥</span>Booking Details</h3>
@@ -561,7 +561,7 @@ def format_standard_booking_email_html(
                 </p>
                 <p style="margin: 10px 0 0 0; color: #666; line-height: 1.6;">
                     These alternative dates offer the same championship golf experience 
-                    and are clearly marked below with <strong style="color: #fbbf24;">gold badges</strong>.
+                    and are clearly marked below with <strong style="color: #c9a961;">gold badges</strong>.
                 </p>
             </div>
         </div>
@@ -612,7 +612,7 @@ def format_standard_booking_email_html(
             button_html = create_book_button(booking_link, "Reserve Now")
             html += f"""
                     <tr class="{row_class}">
-                        <td><strong style="font-size: 16px; color: #059669;">{time}</strong></td>
+                        <td><strong style="font-size: 16px; color: #1e3a5f;">{time}</strong></td>
                         <td style="text-align: center;"><span class="status-badge">✓ Available</span></td>
                         <td><span class="price-highlight">€{PER_PLAYER_FEE:.0f} pp</span></td>
                         <td style="text-align: center;">
@@ -643,7 +643,7 @@ def format_standard_booking_email_html(
             <p><strong>Step 1:</strong> Click any "Reserve Now" button above for your preferred tee time</p>
             <p><strong>Step 2:</strong> Your email client will open with a pre-filled booking request</p>
             <p><strong>Step 3:</strong> Simply send the email - we'll confirm within 30 minutes</p>
-            <p style="margin-top: 12px; font-style: italic; color: #6b7280;">Alternatively, you may telephone us at <strong style="color: #059669;">+353 41 988 1530</strong></p>
+            <p style="margin-top: 12px; font-style: italic; color: #6b7280;">Alternatively, you may telephone us at <strong style="color: #1e3a5f;">+353 41 988 1530</strong></p>
         </div>
     """
     
@@ -667,7 +667,7 @@ def format_no_availability_email_html(
     html = get_email_header(course_name)
 
     html += f"""
-        <p class="greeting">Thank you for your enquiry regarding tee times at <strong style="color: #059669;">{course_name}</strong>.</p>
+        <p class="greeting">Thank you for your enquiry regarding tee times at <strong style="color: #1e3a5f;">{course_name}</strong>.</p>
 
         <div class="warning-box">
             <h3><span class="emoji">⚠️</span>No Availability Found</h3>
@@ -719,7 +719,7 @@ Thank you.""")
                 </p>
             </div>
             <a href="{waitlist_mailto}"
-               style="display: inline-block; background: #10b981; color: white; padding: 14px 35px;
+               style="display: inline-block; background: #2d5f7e; color: white; padding: 14px 35px;
                       border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 16px;
                       box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);">
                 Join Waitlist - Get Notified
@@ -734,8 +734,8 @@ Thank you.""")
         <div class="info-box">
             <h3><span class="emoji">📞</span>Please Contact Us</h3>
             <p>We would be delighted to assist you in finding alternative dates or discuss other options:</p>
-            <p><strong>Email:</strong> <a href="mailto:{from_email}" style="color: #059669;">{from_email}</a></p>
-            <p><strong>Telephone:</strong> <a href="tel:+353419881530" style="color: #059669;">+353 41 988 1530</a></p>
+            <p><strong>Email:</strong> <a href="mailto:{from_email}" style="color: #1e3a5f;">{from_email}</a></p>
+            <p><strong>Telephone:</strong> <a href="tel:+353419881530" style="color: #1e3a5f;">+353 41 988 1530</a></p>
         </div>
 
         <p>We look forward to welcoming you to our championship links course.</p>
@@ -767,7 +767,7 @@ def format_error_email_html(
         <div class="info-box">
             <h3><span class="emoji">📞</span>Please Contact Us</h3>
             <p>Our team is ready to help you book your tee time:</p>
-            <p><strong>Email:</strong> <a href="mailto:{from_email}" style="color: #10b981;">{from_email}</a></p>
+            <p><strong>Email:</strong> <a href="mailto:{from_email}" style="color: #2d5f7e;">{from_email}</a></p>
             <p><strong>Phone:</strong> +353 41 988 1530</p>
         </div>
     """
@@ -822,14 +822,14 @@ def format_provisional_acknowledgment_email(
                 </tr>
                 <tr style="background-color: #fffbeb;">
                     <td style="padding: 12px; color: #666; font-weight: 700;"><strong>💶 Estimated Fee</strong></td>
-                    <td style="padding: 12px; text-align: right; color: #10b981; font-size: 20px; font-weight: 700;">€{player_count * PER_PLAYER_FEE:.2f}</td>
+                    <td style="padding: 12px; text-align: right; color: #2d5f7e; font-size: 20px; font-weight: 700;">€{player_count * PER_PLAYER_FEE:.2f}</td>
                 </tr>
             </table>
         </div>
 
         <div style="background: linear-gradient(to right, #e0f2fe 0%, #bae6fd 100%); border-left: 4px solid #24388f; padding: 20px; border-radius: 8px; margin: 30px 0;">
             <h3 style="margin: 0 0 15px 0; color: #24388f;"><span class="emoji">✉️</span>How to Confirm Your Booking</h3>
-            <p style="margin: 0 0 12px 0;">Simply reply to this email with: <strong style="background-color: #fbbf24; color: #24388f; padding: 4px 8px; border-radius: 4px;">CONFIRM {booking_id}</strong></p>
+            <p style="margin: 0 0 12px 0;">Simply reply to this email with: <strong style="background-color: #c9a961; color: #24388f; padding: 4px 8px; border-radius: 4px;">CONFIRM {booking_id}</strong></p>
             <p style="margin: 0; font-size: 14px; color: #666;">Or click the button below to send a pre-filled confirmation email.</p>
         </div>
 
@@ -847,7 +847,7 @@ def format_provisional_acknowledgment_email(
             </a>
         </div>
 
-        <div style="background-color: #f8f9fa; border-left: 3px solid #fbbf24; padding: 15px; border-radius: 6px; margin: 30px 0;">
+        <div style="background-color: #f8f9fa; border-left: 3px solid #c9a961; padding: 15px; border-radius: 6px; margin: 30px 0;">
             <p style="margin: 0; font-size: 13px; color: #666; font-style: italic;">
                 💡 <strong>Need to make changes?</strong> Simply reply to this email with your updated requirements (date, time, or number of players).
             </p>
@@ -1493,12 +1493,12 @@ def send_waitlist_confirmation_email(guest_email: str, waitlist_id: str, parsed:
     html_body = get_email_header(FROM_NAME)
 
     html_body += f"""
-        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+        <div style="background: linear-gradient(135deg, #2d5f7e 0%, #1e3a5f 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
             <h2 style="margin: 0; font-size: 28px; font-weight: 700;">You're on the Waitlist!</h2>
             <p style="margin: 10px 0 0 0; opacity: 0.9;">We'll notify you when availability opens up</p>
         </div>
 
-        <p class="greeting">Thank you for joining our waitlist at <strong style="color: #059669;">{FROM_NAME}</strong>.</p>
+        <p class="greeting">Thank you for joining our waitlist at <strong style="color: #1e3a5f;">{FROM_NAME}</strong>.</p>
 
         <div class="info-box">
             <h3><span class="emoji">📋</span>Your Waitlist Request</h3>
@@ -2435,7 +2435,7 @@ def format_consecutive_slots_table(slot_group: list, player_distribution: list) 
     html = """
     <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
         <thead>
-            <tr style="background: #059669; color: white;">
+            <tr style="background: #1e3a5f; color: white;">
                 <th style="padding: 10px; text-align: left;">Group</th>
                 <th style="padding: 10px; text-align: left;">Tee Time</th>
                 <th style="padding: 10px; text-align: center;">Players</th>
@@ -2466,7 +2466,7 @@ def format_consecutive_slots_table(slot_group: list, player_distribution: list) 
     html += f"""
             <tr style="background: #FFF8E1; font-weight: bold;">
                 <td colspan="3" style="padding: 12px; text-align: right;">Total:</td>
-                <td style="padding: 12px; text-align: right; color: #059669;">€{total_cost:.2f}</td>
+                <td style="padding: 12px; text-align: right; color: #1e3a5f;">€{total_cost:.2f}</td>
             </tr>
         </tbody>
     </table>
@@ -2495,7 +2495,7 @@ def format_group_booking_email_html(
     player_distribution = distribute_players_across_slots(player_count, slots_needed)
     
     html += f"""
-        <p class="greeting">Thank you for your group booking enquiry at <strong style="color: #059669;">{course_name}</strong>!</p>
+        <p class="greeting">Thank you for your group booking enquiry at <strong style="color: #1e3a5f;">{course_name}</strong>!</p>
         
         <div class="info-box">
             <h3><span class="emoji">👥</span>Group Booking Details</h3>
@@ -2548,7 +2548,7 @@ def format_group_booking_email_html(
                 </p>
                 <p style="margin: 10px 0 0 0; color: #666; line-height: 1.6;">
                     These alternative dates offer the same championship golf experience 
-                    and are clearly marked below with <strong style="color: #fbbf24;">gold badges</strong>.
+                    and are clearly marked below with <strong style="color: #c9a961;">gold badges</strong>.
                 </p>
             </div>
         </div>
@@ -2629,8 +2629,8 @@ def format_group_booking_email_html(
 
             button_html = create_book_button(booking_link, f"Book All {slots_needed} Tee Times")
             html += f"""
-            <div class="group-box" style="margin: 20px 0; padding: 20px; background: {'#FFFEF7' if is_alt_date else '#f9fafb'}; border-radius: 8px; border-left: 4px solid {'#fbbf24' if is_alt_date else '#059669'};">
-                <h3 style="margin-top: 0; color: {'#8B7355' if is_alt_date else '#059669'};">
+            <div class="group-box" style="margin: 20px 0; padding: 20px; background: {'#FFFEF7' if is_alt_date else '#f9fafb'}; border-radius: 8px; border-left: 4px solid {'#c9a961' if is_alt_date else '#1e3a5f'};">
+                <h3 style="margin-top: 0; color: {'#8B7355' if is_alt_date else '#1e3a5f'};">
                     <span class="emoji">⛳</span>Option {option_num}: Starting at {start_time}
                 </h3>
                 {slots_table}
@@ -2658,7 +2658,7 @@ def format_group_booking_email_html(
             <p><strong>Step 1:</strong> Choose your preferred option and click "Book All X Tee Times"</p>
             <p><strong>Step 2:</strong> Your email client will open with all details pre-filled</p>
             <p><strong>Step 3:</strong> Send the email - we'll confirm all tee times within 30 minutes</p>
-            <p style="margin-top: 12px; font-style: italic; color: #6b7280;">For groups over 12 players or special requirements, please call us at <strong style="color: #059669;">+353 41 988 1530</strong></p>
+            <p style="margin-top: 12px; font-style: italic; color: #6b7280;">For groups over 12 players or special requirements, please call us at <strong style="color: #1e3a5f;">+353 41 988 1530</strong></p>
         </div>
     """
     
@@ -2683,7 +2683,7 @@ def format_no_consecutive_slots_email_html(
     html = get_email_header(course_name)
 
     html += f"""
-        <p class="greeting">Thank you for your group booking enquiry at <strong style="color: #059669;">{course_name}</strong>.</p>
+        <p class="greeting">Thank you for your group booking enquiry at <strong style="color: #1e3a5f;">{course_name}</strong>.</p>
 
         <div class="warning-box">
             <h3><span class="emoji">⚠️</span>Limited Consecutive Availability</h3>
@@ -2734,7 +2734,7 @@ Thank you.""")
                 </p>
             </div>
             <a href="{waitlist_mailto}"
-               style="display: inline-block; background: #10b981; color: white; padding: 14px 35px;
+               style="display: inline-block; background: #2d5f7e; color: white; padding: 14px 35px;
                       border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 16px;
                       box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);">
                 Join Waitlist - Get Notified
@@ -2749,8 +2749,8 @@ Thank you.""")
         <div class="info-box">
             <h3><span class="emoji">📞</span>Let Us Help You</h3>
             <p>Our team specializes in accommodating group bookings and can help you find the perfect solution:</p>
-            <p><strong>Email:</strong> <a href="mailto:{from_email}" style="color: #059669;">{from_email}</a></p>
-            <p><strong>Telephone:</strong> <a href="tel:+353419881530" style="color: #059669;">+353 41 988 1530</a></p>
+            <p><strong>Email:</strong> <a href="mailto:{from_email}" style="color: #1e3a5f;">{from_email}</a></p>
+            <p><strong>Telephone:</strong> <a href="tel:+353419881530" style="color: #1e3a5f;">+353 41 988 1530</a></p>
             <p style="margin-top: 15px;">We can often:</p>
             <ul style="color: #374151;">
                 <li>Find alternative dates with availability</li>
@@ -3007,18 +3007,27 @@ def handle_inbound_email():
             dates.append(parsed.dates.end_date.strftime('%Y-%m-%d'))
         
         if not dates:
+            logging.warning("⚠️  No dates found in email")
             return jsonify({'status': 'no_dates'}), 200
-        
+
+        logging.info(f"📅 Dates found: {dates}")
+
+        # Save to database FIRST
         booking_id = log_provisional_booking(from_email, parsed, dates, message_id)
+        logging.info(f"✅ Saved to database with booking_id: {booking_id}")
 
         # Check availability with alternatives and send email with time offers
+        logging.info(f"🔍 Checking availability for course_id={DEFAULT_COURSE_ID}, dates={dates}, players={parsed.player_count}")
         api_response = check_availability_with_alternatives(DEFAULT_COURSE_ID, dates, parsed.player_count, parsed)
+        logging.info(f"📊 API Response: {len(api_response.get('results', []))} tee times found")
 
         # Format and send email (includes alternative date info with visual marking)
         subject_line, html_body = format_availability_response(parsed, api_response, from_email, booking_id, message_id)
+        logging.info(f"📧 Email subject: {subject_line}")
 
         # SEND THE EMAIL!
         send_email_sendgrid(from_email, subject_line, html_body)
+        logging.info(f"✅ Email sent to {from_email}")
         
         return jsonify({'status': 'success', 'booking_id': booking_id}), 200
             
@@ -3672,7 +3681,7 @@ def format_waitlist_notification_email(course_name: str, waitlist_item: dict, av
     html += f"""
         <div style="text-align: center; margin: 30px 0;">
             <p style="color: #666; margin-bottom: 15px;">To secure your tee time, please reply to this email or contact us directly.</p>
-            <p><strong>Email:</strong> <a href="mailto:{FROM_EMAIL}" style="color: #059669;">{FROM_EMAIL}</a></p>
+            <p><strong>Email:</strong> <a href="mailto:{FROM_EMAIL}" style="color: #1e3a5f;">{FROM_EMAIL}</a></p>
         </div>
     """
 
@@ -3827,7 +3836,7 @@ def send_waitlist_availability_notification(waitlist_entry: dict, available_time
     html_body = get_email_header(FROM_NAME)
 
     html_body += f"""
-        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+        <div style="background: linear-gradient(135deg, #2d5f7e 0%, #1e3a5f 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
             <h2 style="margin: 0; font-size: 28px; font-weight: 700;">Great News! Tee Times Available</h2>
             <p style="margin: 10px 0 0 0; opacity: 0.9;">A slot has opened up for your requested date</p>
         </div>
@@ -3890,7 +3899,7 @@ Thank you.""")
             </p>
         </div>
 
-        <p>If you have any questions, please don't hesitate to contact us at <a href="mailto:{FROM_EMAIL}" style="color: #059669;">{FROM_EMAIL}</a>.</p>
+        <p>If you have any questions, please don't hesitate to contact us at <a href="mailto:{FROM_EMAIL}" style="color: #1e3a5f;">{FROM_EMAIL}</a>.</p>
     """
 
     html_body += get_email_footer(FROM_NAME, FROM_EMAIL)
