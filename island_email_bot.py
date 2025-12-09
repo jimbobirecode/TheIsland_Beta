@@ -1387,10 +1387,20 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                 logging.info(f"   🔗 Calling Core API: {api_url}")
                 logging.info(f"   📦 Payload: {payload}")
 
+                # Try to wake up the API first with a health check
+                try:
+                    health_url = f"{CORE_API_URL}/health"
+                    logging.info(f"   🏥 Warming up API with health check: {health_url}")
+                    health_response = requests.get(health_url, timeout=30)
+                    logging.info(f"   ✅ Health check responded: {health_response.status_code}")
+                except Exception as health_error:
+                    logging.warning(f"   ⚠️  Health check failed: {health_error}")
+
                 # Add retry logic for 502 errors
                 max_retries = 2
                 for attempt in range(max_retries + 1):
                     try:
+                        logging.info(f"   🔄 Attempt {attempt + 1}/{max_retries + 1}")
                         response = requests.post(
                             api_url,
                             json=payload,
@@ -1407,12 +1417,12 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                         if attempt < max_retries:
                             logging.warning(f"   ⚠️  Got 502, retrying (attempt {attempt + 2}/{max_retries + 1})...")
                             import time
-                            time.sleep(2)
+                            time.sleep(5)  # Increased delay
                     except requests.Timeout:
                         logging.error(f"   ❌ Timeout on attempt {attempt + 1}")
                         if attempt == max_retries:
                             raise
-                        time.sleep(2)
+                        time.sleep(5)
 
                 # Log response details for debugging
                 if response.status_code != 200:
