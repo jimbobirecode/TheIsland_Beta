@@ -1774,7 +1774,7 @@ def add_to_waitlist(guest_email: str, dates: list, preferred_time: str, players:
             'Golf Club',
             'Waiting',
             5,
-            DEFAULT_COURSE_ID
+            DATABASE_CLUB_ID
         ))
 
         conn.commit()
@@ -2220,7 +2220,7 @@ def api_get_bookings():
             SELECT * FROM bookings
             WHERE club = %s
             ORDER BY timestamp DESC
-        """, (DEFAULT_COURSE_ID,))
+        """, (DATABASE_CLUB_ID,))
 
         bookings = cursor.fetchall()
         cursor.close()
