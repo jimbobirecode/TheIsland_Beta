@@ -72,10 +72,16 @@ After deploying:
 
 The system now supports these status values:
 
+**Current Flow (New System):**
 - **Processing** - Temporary status while checking availability (< 2 seconds)
 - **Inquiry** - Initial inquiry received, available times sent
 - **Requested** - Customer clicked "Book Now" and requested specific time
 - **Confirmed** - Staff manually confirmed the booking
+
+**Legacy Status Values (Preserved):**
+- **Booked** - Legacy booked status
+- **Pending** - Legacy pending confirmation
+- **Rejected** - Legacy rejected booking
 - **Provisional** - Provisional booking (not yet confirmed)
 - **Cancelled** - Booking was cancelled
 - **Completed** - Booking is complete
