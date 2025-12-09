@@ -12,7 +12,7 @@ This update fixes two critical bugs preventing inquiries from being saved and di
 ### Bug #2: Invalid Status Constraint
 **Problem**: Database only allowed status values: `'provisional', 'confirmed', 'cancelled', 'completed'`
 **Impact**: INSERT statements failed with constraint violations because code uses: `'Processing', 'Inquiry', 'Requested', 'Confirmed'`
-**Fix**: Updated schema constraint to accept all status values
+**Fix**: Updated schema constraint to accept all status values (BOTH uppercase and lowercase for backwards compatibility)
 
 ## Required Actions
 
@@ -36,21 +36,19 @@ psql $DATABASE_URL -f migration_fix_status_constraint.sql
 
 This migration script will:
 1. Show current status values in the database
-2. Update any lowercase status values to capitalized versions
-3. Drop the old constraint
-4. Add the new constraint with all valid status values
-5. Verify the migration succeeded
+2. Drop the old constraint
+3. Add the new constraint accepting BOTH uppercase and lowercase status values
+4. Verify the migration succeeded
 
-**What it does:**
-- `'provisional'` → `'Provisional'`
-- `'confirmed'` → `'Confirmed'`
-- `'cancelled'` → `'Cancelled'`
-- `'completed'` → `'Completed'`
+**Backwards Compatibility:**
+The new constraint accepts **both uppercase AND lowercase** status values:
+- ✅ `'Confirmed'` (preferred, used by new code)
+- ✅ `'confirmed'` (legacy, for backwards compatibility)
+- ✅ `'Booked'`, `'booked'`
+- ✅ `'Pending'`, `'pending'`
+- etc.
 
-Then adds support for new status values:
-- `'Processing'` - Temporary while checking availability
-- `'Inquiry'` - Initial inquiry with available times sent
-- `'Requested'` - Customer requested specific booking
+This means **old code using lowercase values will continue to work** without any changes!
 
 ### 3. Deploy Updated Code
 
@@ -72,7 +70,7 @@ After deploying:
 
 The system now supports these status values:
 
-**Current Flow (New System):**
+**Current Flow (New System - Uppercase Preferred):**
 - **Processing** - Temporary status while checking availability (< 2 seconds)
 - **Inquiry** - Initial inquiry received, available times sent
 - **Requested** - Customer clicked "Book Now" and requested specific time
@@ -85,6 +83,8 @@ The system now supports these status values:
 - **Provisional** - Provisional booking (not yet confirmed)
 - **Cancelled** - Booking was cancelled
 - **Completed** - Booking is complete
+
+**Note:** All status values accept both uppercase and lowercase for backwards compatibility. For example, both `'Confirmed'` and `'confirmed'` are valid. This ensures old codebases continue to work without modifications.
 
 ## Environment Variables
 
