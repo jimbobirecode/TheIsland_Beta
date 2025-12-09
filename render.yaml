@@ -31,7 +31,7 @@ services:
       - key: DATABASE_CLUB_ID
         value: demo
       - key: TRACKING_EMAIL_PREFIX
-        value: teemail-demo
+        value: clubname
       - key: CLUB_BOOKING_EMAIL
         value: bookings@theislandgolfclub.ie
       - key: CORE_API_URL
