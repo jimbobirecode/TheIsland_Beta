@@ -29,7 +29,7 @@ services:
       - key: DEFAULT_COURSE_ID
         value: theisland
       - key: DATABASE_CLUB_ID
-        value: teemail-demo
+        value: demo
       - key: TRACKING_EMAIL_PREFIX
         value: teemail-demo
       - key: CLUB_BOOKING_EMAIL
@@ -62,7 +62,7 @@ services:
       - key: DEFAULT_COURSE_ID
         value: theisland
       - key: DATABASE_CLUB_ID
-        value: teemail-demo
+        value: demo
       - key: DASHBOARD_PASSWORD
         sync: false
 
