@@ -839,7 +839,7 @@ def format_inquiry_email(results: list, player_count: int, guest_email: str, boo
             <p style="margin: 5px 0;"><strong>Step 1:</strong> Click "Book Now" for your preferred time</p>
             <p style="margin: 5px 0;"><strong>Step 2:</strong> Your email client will open with booking details</p>
             <p style="margin: 5px 0;"><strong>Step 3:</strong> Send the email to request your tee time</p>
-            <p style="margin-top: 12px; font-style: italic; font-size: 14px;">Or call us at <strong style="color: {BRAND_COLORS['navy_primary']};">+353 1 843 6205</strong></p>
+            <p style="margin-top: 12px; font-style: italic; font-size: 14px;">Questions? Reply to this email and we'll be happy to help.</p>
         </div>
     """
 
@@ -1016,7 +1016,7 @@ def format_confirmation_email(booking_data: Dict) -> str:
                 <strong>Bank Details:</strong> Please contact us for bank transfer details
             </p>
             <p style="margin: 10px 0 0 0; font-size: 14px; color: {BRAND_COLORS['text_medium']}; font-style: italic;">
-                💡 For card payment or bank transfer details, please reply to this email or call us at <strong>+353 1 843 6205</strong>
+                💡 For card payment or bank transfer details, please reply to this email.
             </p>
         </div>
 
@@ -1031,13 +1031,12 @@ def format_confirmation_email(booking_data: Dict) -> str:
         </div>
 
         <p style="color: {BRAND_COLORS['text_dark']}; font-size: 16px; line-height: 1.8; margin: 30px 0;">
-            We look forward to welcoming you to our championship links course. If you have any questions, please don't hesitate to contact us.
+            We look forward to welcoming you to our golf club. If you have any questions, please don't hesitate to contact us.
         </p>
 
         <div style="text-align: center; margin: 30px 0; padding: 20px; background-color: {BRAND_COLORS['light_grey']}; border-radius: 8px;">
             <p style="margin: 0 0 10px 0; color: {BRAND_COLORS['text_medium']}; font-size: 14px;">Contact Us</p>
             <p style="margin: 5px 0;"><strong style="color: {BRAND_COLORS['navy_primary']};">📧 Email:</strong> {FROM_EMAIL}</p>
-            <p style="margin: 5px 0;"><strong style="color: {BRAND_COLORS['navy_primary']};">📞 Phone:</strong> +353 1 843 6205</p>
         </div>
 
         <p style="color: {BRAND_COLORS['text_medium']}; font-size: 14px; margin: 20px 0 0 0;">
@@ -1125,11 +1124,10 @@ Thank you.""")
             </h3>
             <p style="margin: 5px 0;">We would be delighted to assist you in finding alternative dates:</p>
             <p style="margin: 8px 0;"><strong>Email:</strong> <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {BRAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a></p>
-            <p style="margin: 8px 0;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: {BRAND_COLORS['navy_primary']};">+353 1 843 6205</a></p>
         </div>
 
         <p style="color: {BRAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 20px 0 0 0;">
-            We look forward to welcoming you to our championship links course.
+            We look forward to welcoming you to our golf club.
         </p>
     """
 
@@ -1220,7 +1218,6 @@ def format_inquiry_received_email(parsed: Dict, guest_email: str, booking_id: st
             </h3>
             <p style="margin: 5px 0;">For immediate assistance, please contact us:</p>
             <p style="margin: 8px 0;"><strong>Email:</strong> <a href="mailto:{CLUB_BOOKING_EMAIL}" style="color: {BRAND_COLORS['navy_primary']};">{CLUB_BOOKING_EMAIL}</a></p>
-            <p style="margin: 8px 0;"><strong>Telephone:</strong> <a href="tel:+35318436205" style="color: {BRAND_COLORS['navy_primary']};">+353 1 843 6205</a></p>
         </div>
 
         <p style="color: {BRAND_COLORS['text_medium']}; font-size: 15px; line-height: 1.8; margin: 30px 0 0 0;">
@@ -1388,15 +1385,23 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                 logging.info(f"   📦 Payload: {payload}")
 
                 # Try to wake up the API first with a health check
+                # Render free tier services can take 60+ seconds to cold start
+                import time
                 try:
                     health_url = f"{CORE_API_URL}/health"
                     logging.info(f"   🏥 Warming up API with health check: {health_url}")
-                    health_response = requests.get(health_url, timeout=30)
+                    health_response = requests.get(health_url, timeout=90)  # Increased from 30s to 90s
                     logging.info(f"   ✅ Health check responded: {health_response.status_code}")
+                    # Give the service extra time to fully wake up
+                    logging.info(f"   ⏳ Waiting 3 seconds for service to fully initialize...")
+                    time.sleep(3)
                 except Exception as health_error:
-                    logging.warning(f"   ⚠️  Health check failed: {health_error}")
+                    logging.warning(f"   ⚠️  Health check failed (continuing anyway): {health_error}")
+                    # Wait longer if health check failed - service might still be waking
+                    logging.info(f"   ⏳ Waiting 10 seconds before trying main request...")
+                    time.sleep(10)
 
-                # Add retry logic for 502 errors
+                # Add retry logic for 502 errors and timeouts
                 max_retries = 2
                 for attempt in range(max_retries + 1):
                     try:
@@ -1416,13 +1421,13 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                         # If 502 and we have retries left, wait and try again
                         if attempt < max_retries:
                             logging.warning(f"   ⚠️  Got 502, retrying (attempt {attempt + 2}/{max_retries + 1})...")
-                            import time
-                            time.sleep(5)  # Increased delay
+                            time.sleep(10)  # Increased delay from 5s to 10s
                     except requests.Timeout:
                         logging.error(f"   ❌ Timeout on attempt {attempt + 1}")
                         if attempt == max_retries:
                             raise
-                        time.sleep(5)
+                        logging.info(f"   ⏳ Waiting 10 seconds before retry...")
+                        time.sleep(10)
 
                 # Log response details for debugging
                 if response.status_code != 200:
