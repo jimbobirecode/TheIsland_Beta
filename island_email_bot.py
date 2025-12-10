@@ -2786,7 +2786,7 @@ def send_payment_confirmation_email(booking_id: str, guest_email: str, date: str
         subject = f"✅ Payment Confirmed - Booking {booking_id}"
 
         html_body = f"""
-        {format_email_header()}
+        {get_email_header()}
 
         <div style="max-width: 600px; margin: 0 auto; background: white; padding: 40px 30px;">
             <div style="text-align: center; margin-bottom: 30px;">
@@ -2834,7 +2834,7 @@ def send_payment_confirmation_email(booking_id: str, guest_email: str, date: str
             <p style="margin-top: 20px;">If you have any questions, please don't hesitate to reply to this email.</p>
         </div>
 
-        {format_email_footer()}
+        {get_email_footer()}
         """
 
         # Send email
