@@ -2465,9 +2465,10 @@ def stripe_webhook():
             logging.info(f"   Amount: €{amount_paid}")
             logging.info(f"   Customer: {guest_email}")
 
-            # Update booking status to "Confirmed"
+            # Update booking status to "Confirmed" and save tee_time
             update_data = {
                 'status': 'Confirmed',
+                'tee_time': tee_time,  # Save the tee time to database
                 'note': f"Payment confirmed via Stripe on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Session ID: {session['id']}"
             }
 
