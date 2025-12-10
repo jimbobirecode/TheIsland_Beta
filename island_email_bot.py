@@ -2870,6 +2870,13 @@ logging.info(f"📮 Tracking Email: {TRACKING_EMAIL_PREFIX}@bookings.teemail.io"
 logging.info(f"🏌️  Database Club ID: {DATABASE_CLUB_ID}")
 logging.info(f"🏌️  Default Course ID: {DEFAULT_COURSE_ID}")
 logging.info(f"🔗 Core API: {CORE_API_URL}")
+if STRIPE_SECRET_KEY:
+    logging.info(f"💳 Stripe: ENABLED (key: {STRIPE_SECRET_KEY[:7]}...)")
+    logging.info(f"📍 Success URL: {STRIPE_SUCCESS_URL}")
+    logging.info(f"📍 Cancel URL: {STRIPE_CANCEL_URL}")
+    logging.info(f"🔗 Book URL: {BOOKING_APP_URL}/book")
+else:
+    logging.info(f"💳 Stripe: DISABLED - Using mailto fallback")
 logging.info("="*80)
 
 
