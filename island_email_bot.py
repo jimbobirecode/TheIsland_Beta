@@ -75,9 +75,6 @@ CORE_API_URL = os.getenv("CORE_API_URL", "https://core-new-aku3.onrender.com")
 # Dashboard API endpoint
 DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://theisland-dashboard.onrender.com")
 
-# Booking App Base URL (used for generating Book Now links)
-BOOKING_APP_URL = os.getenv("BOOKING_APP_URL", "https://theisland-email-bot.onrender.com")
-
 # Default course for bookings (used for API calls to fetch tee times)
 DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "theisland")
 
@@ -93,8 +90,10 @@ CLUB_BOOKING_EMAIL = os.getenv("CLUB_BOOKING_EMAIL", "clubname@bookings.teemail.
 # Stripe Configuration
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "https://theisland.ie/booking-success")
-STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "https://theisland.ie/booking-cancelled")
+# Success/Cancel URLs now point to app endpoints (can be overridden via env vars)
+BOOKING_APP_URL = os.getenv("BOOKING_APP_URL", "https://theisland-email-bot.onrender.com")
+STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", f"{BOOKING_APP_URL}/booking-success")
+STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", f"{BOOKING_APP_URL}/booking-cancelled")
 
 # Initialize Stripe
 if STRIPE_SECRET_KEY:
@@ -2495,6 +2494,284 @@ def stripe_webhook():
     except Exception as e:
         logging.error(f"❌ Error processing Stripe webhook: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/booking-success', methods=['GET'])
+def booking_success():
+    """
+    Success page after Stripe payment completion
+    Shows confirmation message and booking details
+    """
+    booking_id = request.args.get('booking_id', 'Unknown')
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Booking Confirmed - {FROM_NAME}</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                margin: 0;
+                padding: 20px;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }}
+            .container {{
+                background: white;
+                border-radius: 16px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                max-width: 600px;
+                padding: 50px 40px;
+                text-align: center;
+            }}
+            .success-icon {{
+                width: 80px;
+                height: 80px;
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 30px;
+                animation: scaleIn 0.5s ease-out;
+            }}
+            @keyframes scaleIn {{
+                from {{ transform: scale(0); }}
+                to {{ transform: scale(1); }}
+            }}
+            .checkmark {{
+                color: white;
+                font-size: 48px;
+                font-weight: bold;
+            }}
+            h1 {{
+                color: #1f2937;
+                margin: 0 0 15px 0;
+                font-size: 32px;
+            }}
+            p {{
+                color: #6b7280;
+                font-size: 16px;
+                line-height: 1.6;
+                margin: 0 0 30px 0;
+            }}
+            .booking-id {{
+                background: #f3f4f6;
+                border-radius: 8px;
+                padding: 20px;
+                margin: 30px 0;
+            }}
+            .booking-id strong {{
+                color: #1f2937;
+                font-size: 18px;
+            }}
+            .booking-id code {{
+                display: block;
+                font-size: 20px;
+                color: #667eea;
+                font-weight: bold;
+                margin-top: 10px;
+                font-family: 'Courier New', monospace;
+            }}
+            .info-box {{
+                background: #eff6ff;
+                border-left: 4px solid #3b82f6;
+                border-radius: 8px;
+                padding: 20px;
+                text-align: left;
+                margin: 20px 0;
+            }}
+            .info-box h3 {{
+                margin: 0 0 15px 0;
+                color: #1f2937;
+                font-size: 18px;
+            }}
+            .info-box ul {{
+                margin: 0;
+                padding-left: 20px;
+            }}
+            .info-box li {{
+                margin: 8px 0;
+                color: #374151;
+            }}
+            .button {{
+                display: inline-block;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                text-decoration: none;
+                padding: 14px 32px;
+                border-radius: 8px;
+                font-weight: 600;
+                margin-top: 20px;
+                transition: transform 0.2s;
+            }}
+            .button:hover {{
+                transform: translateY(-2px);
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="success-icon">
+                <div class="checkmark">✓</div>
+            </div>
+
+            <h1>Payment Confirmed!</h1>
+            <p>Thank you for your booking. Your payment has been successfully processed.</p>
+
+            <div class="booking-id">
+                <strong>Your Booking Reference:</strong>
+                <code>{booking_id}</code>
+            </div>
+
+            <div class="info-box">
+                <h3>📧 What's Next?</h3>
+                <ul>
+                    <li>Check your email for confirmation details</li>
+                    <li>Save your booking reference for your records</li>
+                    <li>Arrive 30 minutes before your tee time</li>
+                    <li>Bring this confirmation with you</li>
+                </ul>
+            </div>
+
+            <p style="margin-top: 30px; font-size: 14px;">
+                If you have any questions, please reply to your confirmation email.
+            </p>
+
+            <a href="https://theisland.ie" class="button">Return to Homepage</a>
+        </div>
+    </body>
+    </html>
+    """
+
+    return html
+
+
+@app.route('/booking-cancelled', methods=['GET'])
+def booking_cancelled():
+    """
+    Cancellation page when user cancels Stripe payment
+    """
+    booking_id = request.args.get('booking_id', 'Unknown')
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Booking Cancelled - {FROM_NAME}</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                margin: 0;
+                padding: 20px;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }}
+            .container {{
+                background: white;
+                border-radius: 16px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                max-width: 600px;
+                padding: 50px 40px;
+                text-align: center;
+            }}
+            .icon {{
+                width: 80px;
+                height: 80px;
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 30px;
+            }}
+            .icon-text {{
+                color: white;
+                font-size: 48px;
+            }}
+            h1 {{
+                color: #1f2937;
+                margin: 0 0 15px 0;
+                font-size: 32px;
+            }}
+            p {{
+                color: #6b7280;
+                font-size: 16px;
+                line-height: 1.6;
+                margin: 0 0 30px 0;
+            }}
+            .info-box {{
+                background: #fef3c7;
+                border-left: 4px solid #f59e0b;
+                border-radius: 8px;
+                padding: 20px;
+                text-align: left;
+                margin: 20px 0;
+            }}
+            .info-box p {{
+                margin: 8px 0;
+                color: #374151;
+            }}
+            .button {{
+                display: inline-block;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                text-decoration: none;
+                padding: 14px 32px;
+                border-radius: 8px;
+                font-weight: 600;
+                margin: 10px;
+                transition: transform 0.2s;
+            }}
+            .button:hover {{
+                transform: translateY(-2px);
+            }}
+            .button-secondary {{
+                background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="icon">
+                <div class="icon-text">⚠</div>
+            </div>
+
+            <h1>Booking Cancelled</h1>
+            <p>Your payment was cancelled and no charges were made to your card.</p>
+
+            <div class="info-box">
+                <p><strong>📋 What happened?</strong></p>
+                <p>You clicked the back button or closed the payment page before completing your booking.</p>
+                <p style="margin-top: 15px;"><strong>💡 Want to try again?</strong></p>
+                <p>Check your email for available tee times and click "Book Now" to complete your booking.</p>
+            </div>
+
+            <p style="margin-top: 30px;">
+                If you're experiencing issues or have questions, please reply to your inquiry email and we'll be happy to help.
+            </p>
+
+            <div style="margin-top: 30px;">
+                <a href="mailto:{CLUB_BOOKING_EMAIL}" class="button">Contact Us</a>
+                <a href="https://theisland.ie" class="button button-secondary">Return to Homepage</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return html
 
 
 def send_payment_confirmation_email(booking_id: str, guest_email: str, date: str, tee_time: str, players: int, amount_paid: float):
