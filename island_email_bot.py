@@ -36,7 +36,7 @@ Additional Flow:
   Note: "Customer replied again on [timestamp]"
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
 import logging
 import json
 import os
@@ -55,6 +55,7 @@ import re
 from urllib.parse import quote
 from threading import Thread
 import time
+import stripe
 
 app = Flask(__name__)
 
@@ -74,6 +75,9 @@ CORE_API_URL = os.getenv("CORE_API_URL", "https://core-new-aku3.onrender.com")
 # Dashboard API endpoint
 DASHBOARD_API_URL = os.getenv("DASHBOARD_API_URL", "https://theisland-dashboard.onrender.com")
 
+# Booking App Base URL (used for generating Book Now links)
+BOOKING_APP_URL = os.getenv("BOOKING_APP_URL", "https://theisland-email-bot.onrender.com")
+
 # Default course for bookings (used for API calls to fetch tee times)
 DEFAULT_COURSE_ID = os.getenv("DEFAULT_COURSE_ID", "theisland")
 
@@ -85,6 +89,16 @@ TRACKING_EMAIL_PREFIX = os.getenv("TRACKING_EMAIL_PREFIX", "clubname")
 
 # Club booking email (appears in mailto links)
 CLUB_BOOKING_EMAIL = os.getenv("CLUB_BOOKING_EMAIL", "clubname@bookings.teemail.io")
+
+# Stripe Configuration
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "https://theisland.ie/booking-success")
+STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "https://theisland.ie/booking-cancelled")
+
+# Initialize Stripe
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
 
 # --- LOGGING ---
 logging.basicConfig(
@@ -737,32 +751,52 @@ def create_book_button(booking_link: str, button_text: str = "Reserve Now") -> s
 
 
 def build_booking_link(date: str, time: str, players: int, guest_email: str, booking_id: str = None) -> str:
-    """Generate mailto link for Book Now button - sends to bot for processing"""
-    tracking_email = f"{TRACKING_EMAIL_PREFIX}@bookings.teemail.io"
+    """
+    Generate booking link for Book Now button
 
-    subject = quote(f"BOOKING REQUEST - {date} at {time}")
+    If Stripe is configured, creates a link to /book endpoint that redirects to Stripe checkout
+    Otherwise, falls back to mailto link
+    """
+    if STRIPE_SECRET_KEY:
+        # Build Stripe checkout link
+        params = {
+            'booking_id': booking_id or generate_booking_id(guest_email, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            'date': date,
+            'time': time,
+            'players': players,
+            'email': guest_email
+        }
 
-    body_lines = [
-        f"I would like to book the following tee time:",
-        f"",
-        f"Booking Details:",
-        f"- Date: {date}",
-        f"- Time: {time}",
-        f"- Players: {players}",
-        f"- Green Fee: €{PER_PLAYER_FEE:.0f} per player",
-        f"- Total: €{players * PER_PLAYER_FEE:.0f}",
-        f"",
-        f"Guest Email: {guest_email}",
-    ]
+        # URL encode parameters
+        query_string = '&'.join([f"{k}={quote(str(v))}" for k, v in params.items()])
+        return f"{BOOKING_APP_URL}/book?{query_string}"
+    else:
+        # Fallback to mailto link if Stripe not configured
+        tracking_email = f"{TRACKING_EMAIL_PREFIX}@bookings.teemail.io"
 
-    if booking_id:
-        body_lines.insert(3, f"- Booking ID: {booking_id}")
+        subject = quote(f"BOOKING REQUEST - {date} at {time}")
 
-    body = quote("\n".join(body_lines))
+        body_lines = [
+            f"I would like to book the following tee time:",
+            f"",
+            f"Booking Details:",
+            f"- Date: {date}",
+            f"- Time: {time}",
+            f"- Players: {players}",
+            f"- Green Fee: €{PER_PLAYER_FEE:.0f} per player",
+            f"- Total: €{players * PER_PLAYER_FEE:.0f}",
+            f"",
+            f"Guest Email: {guest_email}",
+        ]
 
-    # Email goes ONLY to the bot tracking email for processing
-    mailto_link = f"mailto:{tracking_email}?subject={subject}&body={body}"
-    return mailto_link
+        if booking_id:
+            body_lines.insert(3, f"- Booking ID: {booking_id}")
+
+        body = quote("\n".join(body_lines))
+
+        # Email goes ONLY to the bot tracking email for processing
+        mailto_link = f"mailto:{tracking_email}?subject={subject}&body={body}"
+        return mailto_link
 
 
 def format_inquiry_email(results: list, player_count: int, guest_email: str, booking_id: str = None) -> str:
@@ -832,7 +866,22 @@ def format_inquiry_email(results: list, player_count: int, guest_email: str, boo
         </div>
         """
 
-    html += f"""
+    # Update instructions based on whether Stripe is enabled
+    if STRIPE_SECRET_KEY:
+        html += f"""
+        <div class="info-box" style="margin-top: 30px;">
+            <h3 style="color: {BRAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
+                💡 How to Book Your Tee Time
+            </h3>
+            <p style="margin: 5px 0;"><strong>Step 1:</strong> Click "Book Now" for your preferred time</p>
+            <p style="margin: 5px 0;"><strong>Step 2:</strong> Complete your payment securely via Stripe</p>
+            <p style="margin: 5px 0;"><strong>Step 3:</strong> Receive instant confirmation via email</p>
+            <p style="margin-top: 12px; font-style: italic; font-size: 14px;">✅ Secure payment processing • 💳 All major cards accepted • 🔒 SSL encrypted</p>
+            <p style="margin-top: 8px; font-style: italic; font-size: 14px;">Questions? Reply to this email and we'll be happy to help.</p>
+        </div>
+    """
+    else:
+        html += f"""
         <div class="info-box" style="margin-top: 30px;">
             <h3 style="color: {BRAND_COLORS['navy_primary']}; font-size: 18px; margin: 0 0 12px 0;">
                 💡 How to Book Your Tee Time
@@ -2235,6 +2284,290 @@ def api_update_booking(booking_id):
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# STRIPE PAYMENT ENDPOINTS
+# ============================================================================
+
+@app.route('/api/create-checkout-session', methods=['POST'])
+def create_checkout_session():
+    """
+    Create a Stripe checkout session for a booking
+
+    Expected JSON payload:
+    {
+        "booking_id": "ISL-20251209-8C9409B7",
+        "date": "2025-12-15",
+        "tee_time": "10:30",
+        "players": 4,
+        "total": 1300.00,
+        "guest_email": "customer@example.com"
+    }
+    """
+    try:
+        if not STRIPE_SECRET_KEY:
+            return jsonify({'error': 'Stripe not configured'}), 500
+
+        data = request.json
+        booking_id = data.get('booking_id')
+        date = data.get('date')
+        tee_time = data.get('tee_time')
+        players = data.get('players')
+        total = data.get('total')
+        guest_email = data.get('guest_email')
+
+        if not all([booking_id, date, players, total, guest_email]):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        # Create Stripe checkout session
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'eur',
+                    'product_data': {
+                        'name': f'Golf Booking - {FROM_NAME}',
+                        'description': f'Date: {date}{f", Tee Time: {tee_time}" if tee_time else ""}\nPlayers: {players}',
+                        'images': ['https://theisland.ie/wp-content/uploads/2024/01/island-logo.png'],
+                    },
+                    'unit_amount': int(float(total) * 100),  # Convert to cents
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url=STRIPE_SUCCESS_URL + f'?booking_id={booking_id}',
+            cancel_url=STRIPE_CANCEL_URL + f'?booking_id={booking_id}',
+            customer_email=guest_email,
+            metadata={
+                'booking_id': booking_id,
+                'date': date,
+                'tee_time': tee_time or '',
+                'players': str(players),
+                'club': DATABASE_CLUB_ID,
+            },
+        )
+
+        logging.info(f"✅ Created Stripe checkout session for booking {booking_id}: {session.id}")
+
+        return jsonify({
+            'sessionId': session.id,
+            'url': session.url
+        })
+
+    except Exception as e:
+        logging.error(f"❌ Error creating Stripe checkout session: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/book', methods=['GET'])
+def book_redirect():
+    """
+    Simple redirect endpoint for email Book Now buttons
+    Accepts GET parameters and redirects to Stripe checkout
+
+    Parameters:
+    - booking_id: ISL-20251209-8C9409B7
+    - date: 2025-12-15
+    - time: 10:30
+    - players: 4
+    - email: customer@example.com
+    """
+    try:
+        if not STRIPE_SECRET_KEY:
+            return "Stripe payment system is not configured. Please contact us directly.", 500
+
+        # Get parameters from query string
+        booking_id = request.args.get('booking_id')
+        date = request.args.get('date')
+        tee_time = request.args.get('time')
+        players = request.args.get('players')
+        guest_email = request.args.get('email')
+
+        if not all([booking_id, date, tee_time, players, guest_email]):
+            return "Missing required booking information. Please contact us directly.", 400
+
+        # Convert players to int and calculate total
+        players = int(players)
+        total = players * PER_PLAYER_FEE
+
+        # Create Stripe checkout session
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'eur',
+                    'product_data': {
+                        'name': f'Golf Booking - {FROM_NAME}',
+                        'description': f'Date: {date}, Tee Time: {tee_time}\nPlayers: {players}',
+                        'images': ['https://theisland.ie/wp-content/uploads/2024/01/island-logo.png'],
+                    },
+                    'unit_amount': int(total * 100),  # Convert to cents
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url=STRIPE_SUCCESS_URL + f'?booking_id={booking_id}',
+            cancel_url=STRIPE_CANCEL_URL + f'?booking_id={booking_id}',
+            customer_email=guest_email,
+            metadata={
+                'booking_id': booking_id,
+                'date': date,
+                'tee_time': tee_time,
+                'players': str(players),
+                'club': DATABASE_CLUB_ID,
+            },
+        )
+
+        logging.info(f"✅ Created Stripe checkout session for booking {booking_id}: {session.id}")
+
+        # Redirect to Stripe checkout
+        return redirect(session.url, code=303)
+
+    except Exception as e:
+        logging.error(f"❌ Error creating Stripe checkout: {str(e)}")
+        return f"Unable to process payment. Please contact us directly. Error: {str(e)}", 500
+
+
+@app.route('/webhook/stripe', methods=['POST'])
+def stripe_webhook():
+    """
+    Handle Stripe webhook events
+    Primary event: checkout.session.completed
+    """
+    payload = request.data
+    sig_header = request.headers.get('Stripe-Signature')
+
+    try:
+        if STRIPE_WEBHOOK_SECRET:
+            # Verify webhook signature
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, STRIPE_WEBHOOK_SECRET
+            )
+        else:
+            # No signature verification (not recommended for production)
+            event = json.loads(payload)
+
+        logging.info(f"📨 Received Stripe webhook: {event['type']}")
+
+        # Handle successful payment
+        if event['type'] == 'checkout.session.completed':
+            session = event['data']['object']
+
+            # Extract booking information from metadata
+            booking_id = session['metadata'].get('booking_id')
+            date = session['metadata'].get('date')
+            tee_time = session['metadata'].get('tee_time')
+            players = session['metadata'].get('players')
+            guest_email = session['customer_email']
+            amount_paid = session['amount_total'] / 100  # Convert from cents
+
+            logging.info(f"💳 Payment successful for booking {booking_id}")
+            logging.info(f"   Amount: €{amount_paid}")
+            logging.info(f"   Customer: {guest_email}")
+
+            # Update booking status to "Confirmed"
+            update_data = {
+                'status': 'Confirmed',
+                'note': f"Payment confirmed via Stripe on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Session ID: {session['id']}"
+            }
+
+            if update_booking_in_db(booking_id, update_data):
+                logging.info(f"✅ Updated booking {booking_id} to Confirmed status")
+
+                # Send confirmation email in background
+                Thread(
+                    target=send_payment_confirmation_email,
+                    args=(booking_id, guest_email, date, tee_time, players, amount_paid)
+                ).start()
+
+            else:
+                logging.error(f"❌ Failed to update booking {booking_id}")
+
+        return jsonify({'status': 'success'}), 200
+
+    except ValueError as e:
+        logging.error(f"❌ Invalid Stripe webhook payload: {str(e)}")
+        return jsonify({'error': 'Invalid payload'}), 400
+    except stripe.error.SignatureVerificationError as e:
+        logging.error(f"❌ Invalid Stripe webhook signature: {str(e)}")
+        return jsonify({'error': 'Invalid signature'}), 400
+    except Exception as e:
+        logging.error(f"❌ Error processing Stripe webhook: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+def send_payment_confirmation_email(booking_id: str, guest_email: str, date: str, tee_time: str, players: int, amount_paid: float):
+    """
+    Send confirmation email after successful payment
+    """
+    try:
+        # Format tee time display
+        tee_time_display = f" at {tee_time}" if tee_time else ""
+
+        # Create email body
+        subject = f"✅ Payment Confirmed - Booking {booking_id}"
+
+        html_body = f"""
+        {format_email_header()}
+
+        <div style="max-width: 600px; margin: 0 auto; background: white; padding: 40px 30px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <div style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                            color: white; padding: 15px 30px; border-radius: 50px; font-size: 24px; font-weight: bold;">
+                    ✅ Payment Confirmed!
+                </div>
+            </div>
+
+            <h2 style="color: {BRAND_COLORS['navy_primary']}; margin-bottom: 20px;">Thank you for your payment!</h2>
+
+            <p>We're delighted to confirm that your payment has been received and your booking is now confirmed.</p>
+
+            <div style="background: linear-gradient(to right, #f0fdf4 0%, #dcfce7 100%);
+                        border-left: 4px solid #10b981; padding: 20px; border-radius: 8px; margin: 30px 0;">
+                <h3 style="margin: 0 0 15px 0; color: {BRAND_COLORS['navy_primary']};"><strong>📅 Booking Details</strong></h3>
+                <p style="margin: 5px 0;"><strong>Booking ID:</strong> {booking_id}</p>
+                <p style="margin: 5px 0;"><strong>Date:</strong> {date}{tee_time_display}</p>
+                <p style="margin: 5px 0;"><strong>Players:</strong> {players}</p>
+                <p style="margin: 5px 0;"><strong>Amount Paid:</strong> €{amount_paid:.2f}</p>
+            </div>
+
+            <div style="background: linear-gradient(to right, #eff6ff 0%, #dbeafe 100%);
+                        border-left: 4px solid {BRAND_COLORS['royal_blue']};
+                        padding: 20px; border-radius: 8px; margin: 30px 0;">
+                <h3 style="margin: 0 0 15px 0; color: {BRAND_COLORS['navy_primary']};"><strong>📋 What's Next?</strong></h3>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li style="margin: 8px 0;">You'll receive a detailed confirmation email with all the information you need</li>
+                    <li style="margin: 8px 0;">Please arrive 30 minutes before your tee time</li>
+                    <li style="margin: 8px 0;">Bring your booking confirmation (this email)</li>
+                    <li style="margin: 8px 0;">Don't forget your golf clubs and suitable attire</li>
+                </ul>
+            </div>
+
+            <div style="background: linear-gradient(to right, #fef3c7 0%, #fde68a 100%);
+                        border-left: 4px solid {BRAND_COLORS['gold_accent']};
+                        padding: 20px; border-radius: 8px; margin: 30px 0;">
+                <h3 style="margin: 0 0 15px 0; color: {BRAND_COLORS['navy_primary']};"><strong>ℹ️ Important Information</strong></h3>
+                <p style="margin: 5px 0;">If you need to modify or cancel your booking, please contact us as soon as possible.</p>
+                <p style="margin: 5px 0;">Our cancellation policy: Cancellations must be made at least 48 hours in advance for a full refund.</p>
+            </div>
+
+            <p style="margin-top: 30px;">We look forward to welcoming you to {FROM_NAME}!</p>
+
+            <p style="margin-top: 20px;">If you have any questions, please don't hesitate to reply to this email.</p>
+        </div>
+
+        {format_email_footer()}
+        """
+
+        # Send email
+        if send_email_sendgrid(guest_email, subject, html_body):
+            logging.info(f"✅ Sent payment confirmation email to {guest_email}")
+        else:
+            logging.error(f"❌ Failed to send payment confirmation email to {guest_email}")
+
+    except Exception as e:
+        logging.error(f"❌ Error sending payment confirmation email: {str(e)}")
 
 
 # ============================================================================
