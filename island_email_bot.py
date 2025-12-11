@@ -573,6 +573,51 @@ def init_database():
         else:
             logging.info("📋 Bookings table exists")
 
+            # Check and update status constraint for Direct Debit payments
+            logging.info("🔍 Checking status constraint for Direct Debit support...")
+            try:
+                # Check if constraint exists and get its definition
+                cursor.execute("""
+                    SELECT pg_get_constraintdef(oid)
+                    FROM pg_constraint
+                    WHERE conname = 'valid_status' AND conrelid = 'bookings'::regclass;
+                """)
+                constraint_def = cursor.fetchone()
+
+                # Check if Direct Debit statuses are already in the constraint
+                needs_update = False
+                if constraint_def:
+                    constraint_text = constraint_def[0]
+                    if 'Pending SEPA' not in constraint_text or 'Pending BACS' not in constraint_text:
+                        needs_update = True
+                        logging.info("⚙️  Updating status constraint to add Direct Debit statuses...")
+                else:
+                    # No constraint exists, add it
+                    needs_update = True
+                    logging.info("⚙️  Adding status constraint with Direct Debit statuses...")
+
+                if needs_update:
+                    # Drop old constraint if it exists
+                    cursor.execute("ALTER TABLE bookings DROP CONSTRAINT IF EXISTS valid_status;")
+
+                    # Add updated constraint with Direct Debit statuses
+                    cursor.execute("""
+                        ALTER TABLE bookings ADD CONSTRAINT valid_status CHECK (status IN (
+                            'Processing', 'Inquiry', 'Requested', 'Confirmed', 'Booked', 'Pending',
+                            'Rejected', 'Provisional', 'Cancelled', 'Completed',
+                            'confirmed', 'provisional', 'cancelled', 'completed', 'booked',
+                            'pending', 'rejected',
+                            'Pending SEPA', 'Pending BACS'
+                        ));
+                    """)
+                    logging.info("✅ Status constraint updated with Direct Debit statuses")
+                else:
+                    logging.info("✅ Status constraint already includes Direct Debit statuses")
+
+            except Exception as e:
+                logging.warning(f"⚠️  Could not update status constraint: {e}")
+                # Continue anyway - constraint might not exist on all deployments
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_email ON bookings(guest_email);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_message_id ON bookings(message_id);")
@@ -2523,26 +2568,52 @@ def stripe_webhook():
 
             # Check if Direct Debit (BACS or SEPA) was used
             if 'bacs_debit' in payment_method_types or 'sepa_debit' in payment_method_types:
-                # Direct Debit: Mark as "pending" - payment will clear in 3-5 days
                 payment_type = 'SEPA' if 'sepa_debit' in payment_method_types else 'BACS'
-                logging.info(f"⏳ {payment_type} Direct Debit payment pending for booking {booking_id}")
 
-                update_data = {
-                    'status': f'Pending {payment_type}',
-                    'tee_time': tee_time,
-                    'note': f"{payment_type} Direct Debit payment initiated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount: €{amount_paid}\nStatus: Pending (clears in 3-5 business days)\nStripe Session ID: {session['id']}"
-                }
+                # Detect test mode (session ID starts with cs_test_ or sk_test_)
+                is_test_mode = session['id'].startswith('cs_test_') or (STRIPE_SECRET_KEY and STRIPE_SECRET_KEY.startswith('sk_test_'))
 
-                if update_booking_in_db(booking_id, update_data):
-                    logging.info(f"✅ Updated booking {booking_id} to Pending {payment_type} status")
+                if is_test_mode:
+                    # TEST MODE: Instant confirmation for easier testing
+                    logging.info(f"🧪 TEST MODE: {payment_type} Direct Debit - marking as confirmed immediately")
 
-                    # Send "pending confirmation" email
-                    Thread(
-                        target=send_direct_debit_pending_email,
-                        args=(booking_id, guest_email, date, tee_time, players, amount_paid, payment_type)
-                    ).start()
+                    update_data = {
+                        'status': 'Confirmed',
+                        'tee_time': tee_time,
+                        'note': f"Payment confirmed via Stripe ({payment_type} Direct Debit - TEST MODE) on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Session ID: {session['id']}"
+                    }
+
+                    if update_booking_in_db(booking_id, update_data):
+                        logging.info(f"✅ Updated booking {booking_id} to Confirmed status (test mode)")
+
+                        # Send instant confirmation email (same as card payment)
+                        Thread(
+                            target=send_payment_confirmation_email,
+                            args=(booking_id, guest_email, date, tee_time, players, amount_paid)
+                        ).start()
+                    else:
+                        logging.error(f"❌ Failed to update booking {booking_id}")
+
                 else:
-                    logging.error(f"❌ Failed to update booking {booking_id}")
+                    # LIVE MODE: Mark as pending - payment will clear in 3-5 days
+                    logging.info(f"⏳ {payment_type} Direct Debit payment pending for booking {booking_id}")
+
+                    update_data = {
+                        'status': f'Pending {payment_type}',
+                        'tee_time': tee_time,
+                        'note': f"{payment_type} Direct Debit payment initiated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount: €{amount_paid}\nStatus: Pending (clears in 3-5 business days)\nStripe Session ID: {session['id']}"
+                    }
+
+                    if update_booking_in_db(booking_id, update_data):
+                        logging.info(f"✅ Updated booking {booking_id} to Pending {payment_type} status")
+
+                        # Send "pending confirmation" email
+                        Thread(
+                            target=send_direct_debit_pending_email,
+                            args=(booking_id, guest_email, date, tee_time, players, amount_paid, payment_type)
+                        ).start()
+                    else:
+                        logging.error(f"❌ Failed to update booking {booking_id}")
 
             else:
                 # Card payment: Instant confirmation

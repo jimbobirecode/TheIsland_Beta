@@ -116,6 +116,15 @@ Stripe webhook handler for payment events.
 4. Sends confirmation email to customer
 
 *For Direct Debit Payments (SEPA or BACS):*
+
+**In Test Mode:**
+1. Extracts booking data from session metadata
+2. Detects payment method (SEPA or BACS)
+3. Detects test mode (session ID starts with `cs_test_`)
+4. **Updates booking status to "Confirmed" immediately** (for easier testing)
+5. Sends instant confirmation email to customer
+
+**In Live/Production Mode:**
 1. Extracts booking data from session metadata
 2. Detects payment method (SEPA or BACS)
 3. Updates booking status to "Pending SEPA" or "Pending BACS"
@@ -374,6 +383,15 @@ Both payment methods work the same way and have the same low fees (0.8% capped a
 
 ### Direct Debit Payment Flow
 
+**Test Mode (using `sk_test_` keys):**
+1. **Customer Checkout** (Day 0)
+   - Customer selects Direct Debit at checkout (SEPA or BACS)
+   - Provides bank account details (IBAN for SEPA, sort code/account for BACS)
+   - **Status immediately set to "Confirmed"** ✅
+   - **Receives instant confirmation email** (same as card payments)
+   - No waiting - perfect for testing!
+
+**Live/Production Mode (using `sk_live_` keys):**
 1. **Customer Checkout** (Day 0)
    - Customer selects Direct Debit at checkout (SEPA or BACS)
    - Provides bank account details (IBAN for SEPA, sort code/account for BACS)
@@ -455,6 +473,8 @@ Stripe provides test account numbers for both methods:
 - Account Holder Name: Any name
 
 In test mode, both SEPA and BACS payments clear almost instantly instead of 3-5 days, allowing you to test the full flow quickly.
+
+**TEST MODE BEHAVIOR:** When using test API keys (`sk_test_`), Direct Debit payments are automatically marked as "Confirmed" immediately at checkout - no need to wait for the `charge.succeeded` webhook. This makes testing much faster!
 
 ## Fallback Behavior
 
