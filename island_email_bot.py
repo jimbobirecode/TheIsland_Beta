@@ -2568,26 +2568,52 @@ def stripe_webhook():
 
             # Check if Direct Debit (BACS or SEPA) was used
             if 'bacs_debit' in payment_method_types or 'sepa_debit' in payment_method_types:
-                # Direct Debit: Mark as "pending" - payment will clear in 3-5 days
                 payment_type = 'SEPA' if 'sepa_debit' in payment_method_types else 'BACS'
-                logging.info(f"⏳ {payment_type} Direct Debit payment pending for booking {booking_id}")
 
-                update_data = {
-                    'status': f'Pending {payment_type}',
-                    'tee_time': tee_time,
-                    'note': f"{payment_type} Direct Debit payment initiated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount: €{amount_paid}\nStatus: Pending (clears in 3-5 business days)\nStripe Session ID: {session['id']}"
-                }
+                # Detect test mode (session ID starts with cs_test_ or sk_test_)
+                is_test_mode = session['id'].startswith('cs_test_') or (STRIPE_SECRET_KEY and STRIPE_SECRET_KEY.startswith('sk_test_'))
 
-                if update_booking_in_db(booking_id, update_data):
-                    logging.info(f"✅ Updated booking {booking_id} to Pending {payment_type} status")
+                if is_test_mode:
+                    # TEST MODE: Instant confirmation for easier testing
+                    logging.info(f"🧪 TEST MODE: {payment_type} Direct Debit - marking as confirmed immediately")
 
-                    # Send "pending confirmation" email
-                    Thread(
-                        target=send_direct_debit_pending_email,
-                        args=(booking_id, guest_email, date, tee_time, players, amount_paid, payment_type)
-                    ).start()
+                    update_data = {
+                        'status': 'Confirmed',
+                        'tee_time': tee_time,
+                        'note': f"Payment confirmed via Stripe ({payment_type} Direct Debit - TEST MODE) on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Session ID: {session['id']}"
+                    }
+
+                    if update_booking_in_db(booking_id, update_data):
+                        logging.info(f"✅ Updated booking {booking_id} to Confirmed status (test mode)")
+
+                        # Send instant confirmation email (same as card payment)
+                        Thread(
+                            target=send_payment_confirmation_email,
+                            args=(booking_id, guest_email, date, tee_time, players, amount_paid)
+                        ).start()
+                    else:
+                        logging.error(f"❌ Failed to update booking {booking_id}")
+
                 else:
-                    logging.error(f"❌ Failed to update booking {booking_id}")
+                    # LIVE MODE: Mark as pending - payment will clear in 3-5 days
+                    logging.info(f"⏳ {payment_type} Direct Debit payment pending for booking {booking_id}")
+
+                    update_data = {
+                        'status': f'Pending {payment_type}',
+                        'tee_time': tee_time,
+                        'note': f"{payment_type} Direct Debit payment initiated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount: €{amount_paid}\nStatus: Pending (clears in 3-5 business days)\nStripe Session ID: {session['id']}"
+                    }
+
+                    if update_booking_in_db(booking_id, update_data):
+                        logging.info(f"✅ Updated booking {booking_id} to Pending {payment_type} status")
+
+                        # Send "pending confirmation" email
+                        Thread(
+                            target=send_direct_debit_pending_email,
+                            args=(booking_id, guest_email, date, tee_time, players, amount_paid, payment_type)
+                        ).start()
+                    else:
+                        logging.error(f"❌ Failed to update booking {booking_id}")
 
             else:
                 # Card payment: Instant confirmation
