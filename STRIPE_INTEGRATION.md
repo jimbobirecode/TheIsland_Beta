@@ -103,13 +103,29 @@ Programmatic checkout session creation.
 Stripe webhook handler for payment events.
 
 **Handles Events:**
-- `checkout.session.completed` - Payment successful
+- `checkout.session.completed` - Payment checkout completed (instant for cards, pending for BACS)
+- `charge.succeeded` - BACS payment cleared (3-5 days after checkout)
+- `charge.failed` - Payment failed (logged for monitoring)
 
-**Actions on Success:**
+**Actions on checkout.session.completed:**
+
+*For Card Payments:*
 1. Extracts booking data from session metadata
 2. Updates booking status to "Confirmed"
 3. Adds payment note with Stripe session ID
 4. Sends confirmation email to customer
+
+*For BACS Payments:*
+1. Extracts booking data from session metadata
+2. Updates booking status to "Pending BACS"
+3. Adds payment note indicating pending status
+4. Sends "pending confirmation" email to customer
+
+**Actions on charge.succeeded (BACS only):**
+1. Retrieves original booking details
+2. Updates booking status to "Confirmed"
+3. Adds payment note indicating BACS cleared
+4. Sends final confirmation email to customer
 
 ### 3. Booking Link Generation
 
@@ -174,8 +190,13 @@ BOOKING_APP_URL=https://theisland-email-bot.onrender.com
 1. Go to https://dashboard.stripe.com/webhooks
 2. Click "Add endpoint"
 3. Enter URL: `https://your-app-url.onrender.com/webhook/stripe`
-4. Select events: `checkout.session.completed`
+4. Select events to listen to:
+   - ✅ `checkout.session.completed` (required - handles both card and BACS checkouts)
+   - ✅ `charge.succeeded` (required for BACS - notifies when payment clears)
+   - ✅ `charge.failed` (optional - logs failed payments)
 5. Copy webhook signing secret to `STRIPE_WEBHOOK_SECRET`
+
+**Important:** You must add `charge.succeeded` event to receive notifications when BACS payments clear (3-5 days after checkout).
 
 ### 4. Create Success/Cancel Pages
 
@@ -248,16 +269,49 @@ Bookings appear in the dashboard with:
 3. **API Key Protection**: Never commit API keys to git
 4. **Test Mode First**: Always test with test keys before going live
 
+## Payment Methods
+
+The system now supports two payment methods:
+
+### 1. Card Payments (Instant)
+- **Processing**: Instant confirmation
+- **Status**: Booking immediately confirmed
+- **Email**: Instant confirmation email sent
+- **Fees**: 1.4% + €0.25 per transaction
+
+### 2. BACS Direct Debit (3-5 days)
+- **Processing**: 3-5 business days to clear
+- **Status**: "Pending BACS" → "Confirmed" (after clearing)
+- **Emails**:
+  - Initial: "Payment Pending" email sent immediately
+  - Final: "Payment Confirmed" email sent after clearing
+- **Fees**: 0.8% (capped at €2.00)
+- **Requirements**: UK bank account required
+
 ## Cost Breakdown
 
 ### Stripe Fees (Ireland)
-- **Card payments**: 1.4% + €0.25 per transaction
-- **Example**: €1,300 booking = €18.45 + €0.25 = €18.70 fee
 
-### What You Keep
-- €1,300.00 booking
-- -€18.70 Stripe fee
-- **= €1,281.30 net**
+#### Card Payments
+- **Fee**: 1.4% + €0.25 per transaction
+- **Example**: €1,300 booking = €18.45 + €0.25 = **€18.70 fee**
+- **Net**: €1,281.30
+
+#### BACS Direct Debit (NEW - Much Cheaper!)
+- **Fee**: 0.8% (capped at €2.00)
+- **Example**: €1,300 booking = 0.8% = **€2.00 fee** (capped)
+- **Net**: €1,298.00
+- **Savings**: **€16.70 per booking vs card!**
+
+### Fee Comparison Table
+
+| Booking Amount | Card Fee | BACS Fee | Savings |
+|----------------|----------|----------|---------|
+| €100 | €1.65 | €0.80 | €0.85 |
+| €200 | €3.05 | €1.60 | €1.45 |
+| €500 | €7.25 | €2.00 | €5.25 |
+| €1,000 | €14.25 | €2.00 | €12.25 |
+| €1,300 | €18.70 | €2.00 | €16.70 |
 
 ## Support
 
@@ -270,6 +324,85 @@ Bookings appear in the dashboard with:
 ### Testing Resources
 - Test cards: https://stripe.com/docs/testing
 - Webhook testing: https://stripe.com/docs/webhooks/test
+
+## BACS Direct Debit Details
+
+### What is BACS?
+BACS (Bankers' Automated Clearing Services) is a UK-based electronic payment system for direct debits and credits. It's widely used throughout the UK and Ireland for automated bank transfers.
+
+### BACS Payment Flow
+
+1. **Customer Checkout** (Day 0)
+   - Customer selects BACS Direct Debit at checkout
+   - Provides UK bank account details
+   - Receives "Payment Pending" email
+   - Booking status: "Pending BACS"
+
+2. **Processing** (Days 1-5)
+   - Payment being processed by banking system
+   - Typical clearing time: 3-5 business days
+   - Tee time is reserved during this period
+
+3. **Payment Clears** (Day 3-5)
+   - Stripe webhook fires `charge.succeeded`
+   - System updates booking to "Confirmed"
+   - Customer receives "Payment Confirmed" email
+   - Booking status: "Confirmed"
+
+### BACS Advantages
+- ✅ **Much cheaper fees**: 0.8% vs 1.4% + €0.25 for cards
+- ✅ **Capped at €2.00**: Large bookings save the most
+- ✅ **Secure**: Protected by Direct Debit Guarantee
+- ✅ **Lower barrier**: No need for credit card
+
+### BACS Considerations
+- ⚠️ **3-5 day clearing time**: Not instant like cards
+- ⚠️ **UK bank accounts only**: Customer must have UK bank
+- ⚠️ **Can be disputed**: Customers have up to 8 weeks to dispute
+- ⚠️ **Requires webhook handling**: Must handle `charge.succeeded` event
+
+### Dashboard Status Indicators
+
+Your booking dashboard will now show different statuses:
+
+- **Confirmed** (Card - Instant) - Green badge, payment received immediately
+- **Pending BACS** (BACS - Day 0-5) - Orange badge, payment processing
+- **Confirmed** (BACS - After clearing) - Green badge, payment cleared
+
+### Email Templates
+
+The system sends different emails based on payment method:
+
+#### Card Payment (Instant)
+- **Subject**: "✅ Payment Confirmed - Booking [ID]"
+- **Sent**: Immediately after checkout
+- **Content**: Full confirmation with booking details
+
+#### BACS Payment (Pending)
+- **Subject**: "⏳ Booking Request Received - [ID]"
+- **Sent**: Immediately after checkout
+- **Content**: Payment pending notice, 3-5 day timeline
+
+#### BACS Payment (Cleared)
+- **Subject**: "✅ Payment Confirmed (BACS Cleared) - [ID]"
+- **Sent**: When payment clears (3-5 days later)
+- **Content**: Full confirmation with booking details
+
+### Testing BACS Payments
+
+Stripe provides test BACS account numbers:
+
+**Test Account (Success)**
+- Sort Code: `108800`
+- Account Number: `00012345`
+- Account Holder Name: Any name
+
+**Test Account (Failure)**
+- Sort Code: `108800`
+- Account Number: `00012346`
+- Account Holder Name: Any name
+
+In test mode, BACS payments clear almost instantly instead of 3-5 days, allowing you to test the full flow quickly.
 
 ## Fallback Behavior
 
