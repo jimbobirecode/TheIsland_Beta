@@ -103,8 +103,8 @@ Programmatic checkout session creation.
 Stripe webhook handler for payment events.
 
 **Handles Events:**
-- `checkout.session.completed` - Payment checkout completed (instant for cards, pending for BACS)
-- `charge.succeeded` - BACS payment cleared (3-5 days after checkout)
+- `checkout.session.completed` - Payment checkout completed (instant for cards, pending for Direct Debit)
+- `charge.succeeded` - Direct Debit payment cleared (3-5 days after checkout for SEPA/BACS)
 - `charge.failed` - Payment failed (logged for monitoring)
 
 **Actions on checkout.session.completed:**
@@ -115,17 +115,19 @@ Stripe webhook handler for payment events.
 3. Adds payment note with Stripe session ID
 4. Sends confirmation email to customer
 
-*For BACS Payments:*
+*For Direct Debit Payments (SEPA or BACS):*
 1. Extracts booking data from session metadata
-2. Updates booking status to "Pending BACS"
-3. Adds payment note indicating pending status
-4. Sends "pending confirmation" email to customer
+2. Detects payment method (SEPA or BACS)
+3. Updates booking status to "Pending SEPA" or "Pending BACS"
+4. Adds payment note indicating pending status
+5. Sends "pending confirmation" email to customer
 
-**Actions on charge.succeeded (BACS only):**
-1. Retrieves original booking details
-2. Updates booking status to "Confirmed"
-3. Adds payment note indicating BACS cleared
-4. Sends final confirmation email to customer
+**Actions on charge.succeeded (Direct Debit only):**
+1. Retrieves original booking details from payment intent metadata
+2. Detects payment method (SEPA or BACS)
+3. Updates booking status to "Confirmed"
+4. Adds payment note indicating Direct Debit cleared
+5. Sends final confirmation email to customer
 
 ### 3. Booking Link Generation
 
@@ -191,12 +193,12 @@ BOOKING_APP_URL=https://theisland-email-bot.onrender.com
 2. Click "Add endpoint"
 3. Enter URL: `https://your-app-url.onrender.com/webhook/stripe`
 4. Select events to listen to:
-   - ✅ `checkout.session.completed` (required - handles both card and BACS checkouts)
-   - ✅ `charge.succeeded` (required for BACS - notifies when payment clears)
+   - ✅ `checkout.session.completed` (required - handles card and Direct Debit checkouts)
+   - ✅ `charge.succeeded` (required for Direct Debit - notifies when payment clears)
    - ✅ `charge.failed` (optional - logs failed payments)
 5. Copy webhook signing secret to `STRIPE_WEBHOOK_SECRET`
 
-**Important:** You must add `charge.succeeded` event to receive notifications when BACS payments clear (3-5 days after checkout).
+**Important:** You must add `charge.succeeded` event to receive notifications when Direct Debit payments (SEPA/BACS) clear (3-5 days after checkout).
 
 ### 4. Create Success/Cancel Pages
 
@@ -271,15 +273,26 @@ Bookings appear in the dashboard with:
 
 ## Payment Methods
 
-The system now supports two payment methods:
+The system now supports three payment methods:
 
 ### 1. Card Payments (Instant)
 - **Processing**: Instant confirmation
 - **Status**: Booking immediately confirmed
 - **Email**: Instant confirmation email sent
 - **Fees**: 1.4% + €0.25 per transaction
+- **Requirements**: Any valid credit/debit card
 
-### 2. BACS Direct Debit (3-5 days)
+### 2. SEPA Direct Debit (3-5 days) - RECOMMENDED for Europe
+- **Processing**: 3-5 business days to clear
+- **Status**: "Pending SEPA" → "Confirmed" (after clearing)
+- **Emails**:
+  - Initial: "Payment Pending" email sent immediately
+  - Final: "Payment Confirmed" email sent after clearing
+- **Fees**: 0.8% (capped at €2.00)
+- **Requirements**: European bank account (SEPA zone)
+- **Coverage**: All 36 SEPA countries including Ireland
+
+### 3. BACS Direct Debit (3-5 days) - For UK customers
 - **Processing**: 3-5 business days to clear
 - **Status**: "Pending BACS" → "Confirmed" (after clearing)
 - **Emails**:
@@ -297,16 +310,17 @@ The system now supports two payment methods:
 - **Example**: €1,300 booking = €18.45 + €0.25 = **€18.70 fee**
 - **Net**: €1,281.30
 
-#### BACS Direct Debit (NEW - Much Cheaper!)
+#### Direct Debit - SEPA/BACS (NEW - Much Cheaper!)
 - **Fee**: 0.8% (capped at €2.00)
 - **Example**: €1,300 booking = 0.8% = **€2.00 fee** (capped)
 - **Net**: €1,298.00
 - **Savings**: **€16.70 per booking vs card!**
+- **Note**: Same low fee for both SEPA (Europe) and BACS (UK)
 
 ### Fee Comparison Table
 
-| Booking Amount | Card Fee | BACS Fee | Savings |
-|----------------|----------|----------|---------|
+| Booking Amount | Card Fee | Direct Debit Fee (SEPA/BACS) | Savings |
+|----------------|----------|------------------------------|---------|
 | €100 | €1.65 | €0.80 | €0.85 |
 | €200 | €3.05 | €1.60 | €1.45 |
 | €500 | €7.25 | €2.00 | €5.25 |
@@ -325,18 +339,23 @@ The system now supports two payment methods:
 - Test cards: https://stripe.com/docs/testing
 - Webhook testing: https://stripe.com/docs/webhooks/test
 
-## BACS Direct Debit Details
+## Direct Debit Payment Details (SEPA & BACS)
 
-### What is BACS?
-BACS (Bankers' Automated Clearing Services) is a UK-based electronic payment system for direct debits and credits. It's widely used throughout the UK and Ireland for automated bank transfers.
+### What are SEPA and BACS?
 
-### BACS Payment Flow
+**SEPA (Single Euro Payments Area)** is a European payment integration initiative that makes bank transfers across the Eurozone as easy as domestic transfers. SEPA covers 36 countries including Ireland and all EU member states.
+
+**BACS (Bankers' Automated Clearing Services)** is a UK-based electronic payment system for direct debits and credits, primarily used in the United Kingdom.
+
+Both payment methods work the same way and have the same low fees (0.8% capped at €2.00).
+
+### Direct Debit Payment Flow
 
 1. **Customer Checkout** (Day 0)
-   - Customer selects BACS Direct Debit at checkout
-   - Provides UK bank account details
+   - Customer selects Direct Debit at checkout (SEPA or BACS)
+   - Provides bank account details (IBAN for SEPA, sort code/account for BACS)
    - Receives "Payment Pending" email
-   - Booking status: "Pending BACS"
+   - Booking status: "Pending SEPA" or "Pending BACS"
 
 2. **Processing** (Days 1-5)
    - Payment being processed by banking system
@@ -349,15 +368,18 @@ BACS (Bankers' Automated Clearing Services) is a UK-based electronic payment sys
    - Customer receives "Payment Confirmed" email
    - Booking status: "Confirmed"
 
-### BACS Advantages
+### Direct Debit Advantages
 - ✅ **Much cheaper fees**: 0.8% vs 1.4% + €0.25 for cards
 - ✅ **Capped at €2.00**: Large bookings save the most
 - ✅ **Secure**: Protected by Direct Debit Guarantee
 - ✅ **Lower barrier**: No need for credit card
+- ✅ **Wide coverage**: SEPA covers 36 European countries
 
-### BACS Considerations
+### Direct Debit Considerations
 - ⚠️ **3-5 day clearing time**: Not instant like cards
-- ⚠️ **UK bank accounts only**: Customer must have UK bank
+- ⚠️ **Geographic requirements**:
+  - SEPA: Requires European bank account (SEPA zone)
+  - BACS: Requires UK bank account
 - ⚠️ **Can be disputed**: Customers have up to 8 weeks to dispute
 - ⚠️ **Requires webhook handling**: Must handle `charge.succeeded` event
 
@@ -366,8 +388,9 @@ BACS (Bankers' Automated Clearing Services) is a UK-based electronic payment sys
 Your booking dashboard will now show different statuses:
 
 - **Confirmed** (Card - Instant) - Green badge, payment received immediately
+- **Pending SEPA** (SEPA - Day 0-5) - Orange badge, payment processing
 - **Pending BACS** (BACS - Day 0-5) - Orange badge, payment processing
-- **Confirmed** (BACS - After clearing) - Green badge, payment cleared
+- **Confirmed** (Direct Debit - After clearing) - Green badge, payment cleared
 
 ### Email Templates
 
@@ -378,31 +401,37 @@ The system sends different emails based on payment method:
 - **Sent**: Immediately after checkout
 - **Content**: Full confirmation with booking details
 
-#### BACS Payment (Pending)
+#### Direct Debit Payment (Pending)
 - **Subject**: "⏳ Booking Request Received - [ID]"
 - **Sent**: Immediately after checkout
 - **Content**: Payment pending notice, 3-5 day timeline
+- **Note**: Email mentions SEPA or BACS based on payment method chosen
 
-#### BACS Payment (Cleared)
-- **Subject**: "✅ Payment Confirmed (BACS Cleared) - [ID]"
+#### Direct Debit Payment (Cleared)
+- **Subject**: "✅ Payment Confirmed (SEPA/BACS Cleared) - [ID]"
 - **Sent**: When payment clears (3-5 days later)
 - **Content**: Full confirmation with booking details
+- **Note**: Email mentions SEPA or BACS based on payment method chosen
 
-### Testing BACS Payments
+### Testing Direct Debit Payments
 
-Stripe provides test BACS account numbers:
+Stripe provides test account numbers for both methods:
 
-**Test Account (Success)**
+**SEPA Test Account (Success)**
+- IBAN: `DE89370400440532013000`
+- Account Holder Name: Any name
+
+**BACS Test Account (Success)**
 - Sort Code: `108800`
 - Account Number: `00012345`
 - Account Holder Name: Any name
 
-**Test Account (Failure)**
+**BACS Test Account (Failure)**
 - Sort Code: `108800`
 - Account Number: `00012346`
 - Account Holder Name: Any name
 
-In test mode, BACS payments clear almost instantly instead of 3-5 days, allowing you to test the full flow quickly.
+In test mode, both SEPA and BACS payments clear almost instantly instead of 3-5 days, allowing you to test the full flow quickly.
 
 ## Fallback Behavior
 
