@@ -2392,90 +2392,85 @@ def book_redirect():
 
         # Create Stripe checkout session with BACS and SEPA Direct Debit support
         # Note: BACS and SEPA must be enabled in Stripe dashboard first
-        # If not enabled, will automatically fall back to card-only
+        # If not enabled, will automatically try different combinations
 
-        # Try with all payment methods first (card, BACS, SEPA)
-        payment_methods = ['card', 'bacs_debit', 'sepa_debit']
-
-        try:
-            session = stripe.checkout.Session.create(
-                payment_method_types=payment_methods,
-                line_items=[{
-                    'price_data': {
-                        'currency': 'eur',
-                        'product_data': {
-                            'name': f'Golf Booking - {FROM_NAME}',
-                            'description': f'Date: {date}, Tee Time: {tee_time}\nPlayers: {players}',
-                            'images': ['https://theisland.ie/wp-content/uploads/2024/01/island-logo.png'],
-                        },
-                        'unit_amount': int(total * 100),  # Convert to cents
+        # Common session parameters
+        session_params = {
+            'line_items': [{
+                'price_data': {
+                    'currency': 'eur',
+                    'product_data': {
+                        'name': f'Golf Booking - {FROM_NAME}',
+                        'description': f'Date: {date}, Tee Time: {tee_time}\nPlayers: {players}',
+                        'images': ['https://theisland.ie/wp-content/uploads/2024/01/island-logo.png'],
                     },
-                    'quantity': 1,
-                }],
-                mode='payment',
-                success_url=STRIPE_SUCCESS_URL + f'?booking_id={booking_id}',
-                cancel_url=STRIPE_CANCEL_URL + f'?booking_id={booking_id}',
-                customer_email=guest_email,
-                metadata={
+                    'unit_amount': int(total * 100),  # Convert to cents
+                },
+                'quantity': 1,
+            }],
+            'mode': 'payment',
+            'success_url': STRIPE_SUCCESS_URL + f'?booking_id={booking_id}',
+            'cancel_url': STRIPE_CANCEL_URL + f'?booking_id={booking_id}',
+            'customer_email': guest_email,
+            'metadata': {
+                'booking_id': booking_id,
+                'date': date,
+                'tee_time': tee_time,
+                'players': str(players),
+                'club': DATABASE_CLUB_ID,
+            },
+            'payment_intent_data': {
+                'metadata': {
                     'booking_id': booking_id,
                     'date': date,
                     'tee_time': tee_time,
                     'players': str(players),
-                    'club': DATABASE_CLUB_ID,
-                },
-                payment_intent_data={
-                    'metadata': {
-                        'booking_id': booking_id,
-                        'date': date,
-                        'tee_time': tee_time,
-                        'players': str(players),
-                    }
                 }
-            )
-        except stripe.error.InvalidRequestError as e:
-            # If BACS/SEPA not enabled, fall back to card-only
-            if 'payment method type' in str(e).lower() and ('bacs_debit' in str(e) or 'sepa_debit' in str(e)):
-                logging.warning(f"⚠️ BACS/SEPA not enabled in Stripe account, falling back to card-only payments")
-                logging.warning(f"   Enable at: https://dashboard.stripe.com/account/payments/settings")
+            }
+        }
 
-                # Retry with card only
+        # Try payment methods in order of preference
+        payment_method_attempts = [
+            (['card', 'sepa_debit', 'bacs_debit'], 'Card + SEPA + BACS'),
+            (['card', 'sepa_debit'], 'Card + SEPA only'),
+            (['card', 'bacs_debit'], 'Card + BACS only'),
+            (['card'], 'Card only'),
+        ]
+
+        session = None
+        for payment_methods, description in payment_method_attempts:
+            try:
                 session = stripe.checkout.Session.create(
-                    payment_method_types=['card'],
-                    line_items=[{
-                        'price_data': {
-                            'currency': 'eur',
-                            'product_data': {
-                                'name': f'Golf Booking - {FROM_NAME}',
-                                'description': f'Date: {date}, Tee Time: {tee_time}\nPlayers: {players}',
-                                'images': ['https://theisland.ie/wp-content/uploads/2024/01/island-logo.png'],
-                            },
-                            'unit_amount': int(total * 100),  # Convert to cents
-                        },
-                        'quantity': 1,
-                    }],
-                    mode='payment',
-                    success_url=STRIPE_SUCCESS_URL + f'?booking_id={booking_id}',
-                    cancel_url=STRIPE_CANCEL_URL + f'?booking_id={booking_id}',
-                    customer_email=guest_email,
-                    metadata={
-                        'booking_id': booking_id,
-                        'date': date,
-                        'tee_time': tee_time,
-                        'players': str(players),
-                        'club': DATABASE_CLUB_ID,
-                    },
-                    payment_intent_data={
-                        'metadata': {
-                            'booking_id': booking_id,
-                            'date': date,
-                            'tee_time': tee_time,
-                            'players': str(players),
-                        }
-                    }
+                    payment_method_types=payment_methods,
+                    **session_params
                 )
-            else:
-                # Different error, re-raise it
-                raise
+                # Success! Log which payment methods are active
+                if len(payment_methods) < 3:
+                    disabled = []
+                    if 'sepa_debit' not in payment_methods:
+                        disabled.append('SEPA')
+                    if 'bacs_debit' not in payment_methods:
+                        disabled.append('BACS')
+                    logging.warning(f"⚠️ Using {description} ({', '.join(disabled)} not enabled)")
+                    logging.warning(f"   Enable at: https://dashboard.stripe.com/account/payments/settings")
+                else:
+                    logging.info(f"✅ Using {description}")
+                break
+            except stripe.error.InvalidRequestError as e:
+                # This payment method combination didn't work, try next
+                if 'payment method type' in str(e).lower():
+                    if payment_methods == ['card']:
+                        # Even card-only failed, re-raise the error
+                        logging.error(f"❌ All payment methods failed: {str(e)}")
+                        raise
+                    # Try next combination
+                    continue
+                else:
+                    # Different error, re-raise it
+                    raise
+
+        if not session:
+            raise Exception("Failed to create Stripe checkout session with any payment method combination")
 
         logging.info(f"✅ Created Stripe checkout session for booking {booking_id}: {session.id}")
 
