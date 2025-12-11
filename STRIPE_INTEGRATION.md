@@ -187,7 +187,28 @@ STRIPE_CANCEL_URL=https://theisland.ie/booking-cancelled
 BOOKING_APP_URL=https://theisland-email-bot.onrender.com
 ```
 
-### 3. Set Up Stripe Webhook
+### 3. Enable Direct Debit Payment Methods (Optional but Recommended)
+
+**IMPORTANT:** BACS and SEPA Direct Debit must be manually activated in your Stripe account to use them. The system will automatically fall back to card-only payments if they're not enabled.
+
+To enable Direct Debit:
+
+1. Go to https://dashboard.stripe.com/account/payments/settings
+2. Scroll to **"Payment methods"** section
+3. Enable:
+   - ✅ **SEPA Direct Debit** (for European customers - saves €16.70 per €1,300 booking!)
+   - ✅ **BACS Direct Debit** (for UK customers - same low fees)
+4. Click **"Save"**
+
+**Note:** Stripe may require additional business verification before approving these payment methods. The approval process typically takes 1-2 business days.
+
+**What happens if not enabled:**
+- System automatically falls back to card payments only
+- No errors for customers
+- You'll see a warning in logs: "BACS/SEPA not enabled, falling back to card-only"
+- Enable them anytime - system will automatically start offering them
+
+### 4. Set Up Stripe Webhook
 
 1. Go to https://dashboard.stripe.com/webhooks
 2. Click "Add endpoint"
@@ -200,13 +221,13 @@ BOOKING_APP_URL=https://theisland-email-bot.onrender.com
 
 **Important:** You must add `charge.succeeded` event to receive notifications when Direct Debit payments (SEPA/BACS) clear (3-5 days after checkout).
 
-### 4. Create Success/Cancel Pages
+### 5. Create Success/Cancel Pages
 
 Create simple HTML pages at:
 - `https://theisland.ie/booking-success` - Thank you page
 - `https://theisland.ie/booking-cancelled` - Booking cancelled page
 
-### 5. Test the Integration
+### 6. Test the Integration
 
 #### Test Mode (Recommended First)
 
@@ -273,7 +294,7 @@ Bookings appear in the dashboard with:
 
 ## Payment Methods
 
-The system now supports three payment methods:
+The system supports three payment methods (BACS and SEPA require manual activation in Stripe dashboard):
 
 ### 1. Card Payments (Instant)
 - **Processing**: Instant confirmation
@@ -282,7 +303,7 @@ The system now supports three payment methods:
 - **Fees**: 1.4% + €0.25 per transaction
 - **Requirements**: Any valid credit/debit card
 
-### 2. SEPA Direct Debit (3-5 days) - RECOMMENDED for Europe
+### 2. SEPA Direct Debit (3-5 days) - RECOMMENDED for Europe ⚙️
 - **Processing**: 3-5 business days to clear
 - **Status**: "Pending SEPA" → "Confirmed" (after clearing)
 - **Emails**:
@@ -291,8 +312,9 @@ The system now supports three payment methods:
 - **Fees**: 0.8% (capped at €2.00)
 - **Requirements**: European bank account (SEPA zone)
 - **Coverage**: All 36 SEPA countries including Ireland
+- **⚙️ Activation Required**: Must be enabled in Stripe dashboard (see setup instructions below)
 
-### 3. BACS Direct Debit (3-5 days) - For UK customers
+### 3. BACS Direct Debit (3-5 days) - For UK customers ⚙️
 - **Processing**: 3-5 business days to clear
 - **Status**: "Pending BACS" → "Confirmed" (after clearing)
 - **Emails**:
@@ -300,6 +322,7 @@ The system now supports three payment methods:
   - Final: "Payment Confirmed" email sent after clearing
 - **Fees**: 0.8% (capped at €2.00)
 - **Requirements**: UK bank account required
+- **⚙️ Activation Required**: Must be enabled in Stripe dashboard (see setup instructions below)
 
 ## Cost Breakdown
 

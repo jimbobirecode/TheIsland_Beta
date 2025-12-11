@@ -2391,40 +2391,91 @@ def book_redirect():
         total = players * PER_PLAYER_FEE
 
         # Create Stripe checkout session with BACS and SEPA Direct Debit support
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card', 'bacs_debit', 'sepa_debit'],  # Support card, BACS, and SEPA
-            line_items=[{
-                'price_data': {
-                    'currency': 'eur',
-                    'product_data': {
-                        'name': f'Golf Booking - {FROM_NAME}',
-                        'description': f'Date: {date}, Tee Time: {tee_time}\nPlayers: {players}',
-                        'images': ['https://theisland.ie/wp-content/uploads/2024/01/island-logo.png'],
+        # Note: BACS and SEPA must be enabled in Stripe dashboard first
+        # If not enabled, will automatically fall back to card-only
+
+        # Try with all payment methods first (card, BACS, SEPA)
+        payment_methods = ['card', 'bacs_debit', 'sepa_debit']
+
+        try:
+            session = stripe.checkout.Session.create(
+                payment_method_types=payment_methods,
+                line_items=[{
+                    'price_data': {
+                        'currency': 'eur',
+                        'product_data': {
+                            'name': f'Golf Booking - {FROM_NAME}',
+                            'description': f'Date: {date}, Tee Time: {tee_time}\nPlayers: {players}',
+                            'images': ['https://theisland.ie/wp-content/uploads/2024/01/island-logo.png'],
+                        },
+                        'unit_amount': int(total * 100),  # Convert to cents
                     },
-                    'unit_amount': int(total * 100),  # Convert to cents
-                },
-                'quantity': 1,
-            }],
-            mode='payment',
-            success_url=STRIPE_SUCCESS_URL + f'?booking_id={booking_id}',
-            cancel_url=STRIPE_CANCEL_URL + f'?booking_id={booking_id}',
-            customer_email=guest_email,
-            metadata={
-                'booking_id': booking_id,
-                'date': date,
-                'tee_time': tee_time,
-                'players': str(players),
-                'club': DATABASE_CLUB_ID,
-            },
-            payment_intent_data={
-                'metadata': {
+                    'quantity': 1,
+                }],
+                mode='payment',
+                success_url=STRIPE_SUCCESS_URL + f'?booking_id={booking_id}',
+                cancel_url=STRIPE_CANCEL_URL + f'?booking_id={booking_id}',
+                customer_email=guest_email,
+                metadata={
                     'booking_id': booking_id,
                     'date': date,
                     'tee_time': tee_time,
                     'players': str(players),
+                    'club': DATABASE_CLUB_ID,
+                },
+                payment_intent_data={
+                    'metadata': {
+                        'booking_id': booking_id,
+                        'date': date,
+                        'tee_time': tee_time,
+                        'players': str(players),
+                    }
                 }
-            }
-        )
+            )
+        except stripe.error.InvalidRequestError as e:
+            # If BACS/SEPA not enabled, fall back to card-only
+            if 'payment method type' in str(e).lower() and ('bacs_debit' in str(e) or 'sepa_debit' in str(e)):
+                logging.warning(f"⚠️ BACS/SEPA not enabled in Stripe account, falling back to card-only payments")
+                logging.warning(f"   Enable at: https://dashboard.stripe.com/account/payments/settings")
+
+                # Retry with card only
+                session = stripe.checkout.Session.create(
+                    payment_method_types=['card'],
+                    line_items=[{
+                        'price_data': {
+                            'currency': 'eur',
+                            'product_data': {
+                                'name': f'Golf Booking - {FROM_NAME}',
+                                'description': f'Date: {date}, Tee Time: {tee_time}\nPlayers: {players}',
+                                'images': ['https://theisland.ie/wp-content/uploads/2024/01/island-logo.png'],
+                            },
+                            'unit_amount': int(total * 100),  # Convert to cents
+                        },
+                        'quantity': 1,
+                    }],
+                    mode='payment',
+                    success_url=STRIPE_SUCCESS_URL + f'?booking_id={booking_id}',
+                    cancel_url=STRIPE_CANCEL_URL + f'?booking_id={booking_id}',
+                    customer_email=guest_email,
+                    metadata={
+                        'booking_id': booking_id,
+                        'date': date,
+                        'tee_time': tee_time,
+                        'players': str(players),
+                        'club': DATABASE_CLUB_ID,
+                    },
+                    payment_intent_data={
+                        'metadata': {
+                            'booking_id': booking_id,
+                            'date': date,
+                            'tee_time': tee_time,
+                            'players': str(players),
+                        }
+                    }
+                )
+            else:
+                # Different error, re-raise it
+                raise
 
         logging.info(f"✅ Created Stripe checkout session for booking {booking_id}: {session.id}")
 
