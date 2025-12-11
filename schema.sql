@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS bookings (
     selected_tee_times TEXT[],
     CONSTRAINT valid_status CHECK (status IN (
         'Processing', 'Inquiry', 'Requested', 'Confirmed', 'Booked', 'Pending', 'Rejected', 'Provisional', 'Cancelled', 'Completed',
-        'confirmed', 'provisional', 'cancelled', 'completed', 'booked', 'pending', 'rejected'
+        'confirmed', 'provisional', 'cancelled', 'completed', 'booked', 'pending', 'rejected',
+        'Pending SEPA', 'Pending BACS'
     ))
 );
 

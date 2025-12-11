@@ -573,6 +573,51 @@ def init_database():
         else:
             logging.info("📋 Bookings table exists")
 
+            # Check and update status constraint for Direct Debit payments
+            logging.info("🔍 Checking status constraint for Direct Debit support...")
+            try:
+                # Check if constraint exists and get its definition
+                cursor.execute("""
+                    SELECT pg_get_constraintdef(oid)
+                    FROM pg_constraint
+                    WHERE conname = 'valid_status' AND conrelid = 'bookings'::regclass;
+                """)
+                constraint_def = cursor.fetchone()
+
+                # Check if Direct Debit statuses are already in the constraint
+                needs_update = False
+                if constraint_def:
+                    constraint_text = constraint_def[0]
+                    if 'Pending SEPA' not in constraint_text or 'Pending BACS' not in constraint_text:
+                        needs_update = True
+                        logging.info("⚙️  Updating status constraint to add Direct Debit statuses...")
+                else:
+                    # No constraint exists, add it
+                    needs_update = True
+                    logging.info("⚙️  Adding status constraint with Direct Debit statuses...")
+
+                if needs_update:
+                    # Drop old constraint if it exists
+                    cursor.execute("ALTER TABLE bookings DROP CONSTRAINT IF EXISTS valid_status;")
+
+                    # Add updated constraint with Direct Debit statuses
+                    cursor.execute("""
+                        ALTER TABLE bookings ADD CONSTRAINT valid_status CHECK (status IN (
+                            'Processing', 'Inquiry', 'Requested', 'Confirmed', 'Booked', 'Pending',
+                            'Rejected', 'Provisional', 'Cancelled', 'Completed',
+                            'confirmed', 'provisional', 'cancelled', 'completed', 'booked',
+                            'pending', 'rejected',
+                            'Pending SEPA', 'Pending BACS'
+                        ));
+                    """)
+                    logging.info("✅ Status constraint updated with Direct Debit statuses")
+                else:
+                    logging.info("✅ Status constraint already includes Direct Debit statuses")
+
+            except Exception as e:
+                logging.warning(f"⚠️  Could not update status constraint: {e}")
+                # Continue anyway - constraint might not exist on all deployments
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_email ON bookings(guest_email);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_message_id ON bookings(message_id);")
