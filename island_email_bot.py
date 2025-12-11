@@ -2319,9 +2319,9 @@ def create_checkout_session():
         if not all([booking_id, date, players, total, guest_email]):
             return jsonify({'error': 'Missing required fields'}), 400
 
-        # Create Stripe checkout session
+        # Create Stripe checkout session with BACS Direct Debit support
         session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
+            payment_method_types=['card', 'bacs_debit'],  # Support both card and BACS
             line_items=[{
                 'price_data': {
                     'currency': 'eur',
@@ -2390,9 +2390,9 @@ def book_redirect():
         players = int(players)
         total = players * PER_PLAYER_FEE
 
-        # Create Stripe checkout session
+        # Create Stripe checkout session with BACS Direct Debit support
         session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
+            payment_method_types=['card', 'bacs_debit'],  # Support both card and BACS
             line_items=[{
                 'price_data': {
                     'currency': 'eur',
@@ -2416,6 +2416,14 @@ def book_redirect():
                 'players': str(players),
                 'club': DATABASE_CLUB_ID,
             },
+            payment_intent_data={
+                'metadata': {
+                    'booking_id': booking_id,
+                    'date': date,
+                    'tee_time': tee_time,
+                    'players': str(players),
+                }
+            }
         )
 
         logging.info(f"✅ Created Stripe checkout session for booking {booking_id}: {session.id}")
@@ -2449,7 +2457,7 @@ def stripe_webhook():
 
         logging.info(f"📨 Received Stripe webhook: {event['type']}")
 
-        # Handle successful payment
+        # Handle successful payment checkout
         if event['type'] == 'checkout.session.completed':
             session = event['data']['object']
 
@@ -2460,29 +2468,116 @@ def stripe_webhook():
             players = session['metadata'].get('players')
             guest_email = session['customer_email']
             amount_paid = session['amount_total'] / 100  # Convert from cents
+            payment_method_types = session.get('payment_method_types', [])
 
-            logging.info(f"💳 Payment successful for booking {booking_id}")
+            logging.info(f"💳 Payment checkout completed for booking {booking_id}")
             logging.info(f"   Amount: €{amount_paid}")
             logging.info(f"   Customer: {guest_email}")
+            logging.info(f"   Payment methods: {payment_method_types}")
 
-            # Update booking status to "Confirmed" and save tee_time
-            update_data = {
-                'status': 'Confirmed',
-                'tee_time': tee_time,  # Save the tee time to database
-                'note': f"Payment confirmed via Stripe on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Session ID: {session['id']}"
-            }
+            # Check if BACS Direct Debit was used
+            if 'bacs_debit' in payment_method_types:
+                # BACS: Mark as "pending" - payment will clear in 3-5 days
+                logging.info(f"⏳ BACS payment pending for booking {booking_id}")
 
-            if update_booking_in_db(booking_id, update_data):
-                logging.info(f"✅ Updated booking {booking_id} to Confirmed status")
+                update_data = {
+                    'status': 'Pending BACS',
+                    'tee_time': tee_time,
+                    'note': f"BACS Direct Debit payment initiated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount: €{amount_paid}\nStatus: Pending (clears in 3-5 business days)\nStripe Session ID: {session['id']}"
+                }
 
-                # Send confirmation email in background
-                Thread(
-                    target=send_payment_confirmation_email,
-                    args=(booking_id, guest_email, date, tee_time, players, amount_paid)
-                ).start()
+                if update_booking_in_db(booking_id, update_data):
+                    logging.info(f"✅ Updated booking {booking_id} to Pending BACS status")
+
+                    # Send "pending confirmation" email
+                    Thread(
+                        target=send_bacs_pending_email,
+                        args=(booking_id, guest_email, date, tee_time, players, amount_paid)
+                    ).start()
+                else:
+                    logging.error(f"❌ Failed to update booking {booking_id}")
 
             else:
-                logging.error(f"❌ Failed to update booking {booking_id}")
+                # Card payment: Instant confirmation
+                logging.info(f"✅ Card payment confirmed for booking {booking_id}")
+
+                update_data = {
+                    'status': 'Confirmed',
+                    'tee_time': tee_time,  # Save the tee time to database
+                    'note': f"Payment confirmed via Stripe (Card) on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Session ID: {session['id']}"
+                }
+
+                if update_booking_in_db(booking_id, update_data):
+                    logging.info(f"✅ Updated booking {booking_id} to Confirmed status")
+
+                    # Send confirmation email in background
+                    Thread(
+                        target=send_payment_confirmation_email,
+                        args=(booking_id, guest_email, date, tee_time, players, amount_paid)
+                    ).start()
+
+                else:
+                    logging.error(f"❌ Failed to update booking {booking_id}")
+
+        # Handle BACS payment clearing (3-5 days after checkout)
+        elif event['type'] == 'charge.succeeded':
+            charge = event['data']['object']
+            payment_method_details = charge.get('payment_method_details', {})
+
+            # Only process if this is a BACS payment
+            if payment_method_details.get('type') == 'bacs_debit':
+                # Get the payment intent to access metadata
+                payment_intent_id = charge.get('payment_intent')
+
+                if payment_intent_id:
+                    try:
+                        # Retrieve payment intent which has our booking metadata
+                        payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+
+                        # Extract booking details from payment intent metadata
+                        booking_id = payment_intent.metadata.get('booking_id')
+                        date = payment_intent.metadata.get('date')
+                        tee_time = payment_intent.metadata.get('tee_time')
+                        players = payment_intent.metadata.get('players')
+                        amount_paid = charge['amount'] / 100
+
+                        if booking_id:
+                            logging.info(f"✅ BACS payment cleared for booking {booking_id}")
+
+                            # Get customer email from charge
+                            receipt_email = charge.get('receipt_email') or charge.get('billing_details', {}).get('email')
+
+                            # Update booking to "Confirmed" status
+                            update_data = {
+                                'status': 'Confirmed',
+                                'note': f"BACS Direct Debit payment cleared on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Charge ID: {charge['id']}"
+                            }
+
+                            if update_booking_in_db(booking_id, update_data):
+                                logging.info(f"✅ Updated booking {booking_id} to Confirmed status (BACS cleared)")
+
+                                # Send final confirmation email if we have customer email
+                                if receipt_email:
+                                    Thread(
+                                        target=send_bacs_confirmed_email,
+                                        args=(booking_id, receipt_email, date, tee_time, players, amount_paid)
+                                    ).start()
+                                else:
+                                    logging.warning(f"⚠️ No customer email found for BACS confirmation (booking {booking_id})")
+                            else:
+                                logging.error(f"❌ Failed to update booking {booking_id} after BACS clearing")
+                        else:
+                            logging.warning(f"⚠️ No booking_id found in payment intent metadata for charge {charge['id']}")
+                    except Exception as e:
+                        logging.error(f"❌ Error processing BACS clearing: {str(e)}")
+
+        # Handle failed charges (optional)
+        elif event['type'] == 'charge.failed':
+            charge = event['data']['object']
+            payment_method_details = charge.get('payment_method_details', {})
+
+            if payment_method_details.get('type') == 'bacs_debit':
+                logging.warning(f"⚠️ BACS payment failed: {charge.get('id')}")
 
         return jsonify({'status': 'success'}), 200
 
@@ -2846,6 +2941,161 @@ def send_payment_confirmation_email(booking_id: str, guest_email: str, date: str
 
     except Exception as e:
         logging.error(f"❌ Error sending payment confirmation email: {str(e)}")
+
+
+def send_bacs_pending_email(booking_id: str, guest_email: str, date: str, tee_time: str, players: int, amount: float):
+    """
+    Send email for BACS pending confirmation
+    BACS payments take 3-5 business days to clear
+    """
+    try:
+        # Format tee time display
+        tee_time_display = f" at {tee_time}" if tee_time else ""
+
+        # Create email body
+        subject = f"⏳ Booking Request Received - {booking_id}"
+
+        html_body = f"""
+        {get_email_header()}
+
+        <div style="max-width: 600px; margin: 0 auto; background: white; padding: 40px 30px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <div style="display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                            color: white; padding: 15px 30px; border-radius: 50px; font-size: 24px; font-weight: bold;">
+                    ⏳ Payment Pending
+                </div>
+            </div>
+
+            <h2 style="color: {BRAND_COLORS['navy_primary']}; margin-bottom: 20px;">Thank you for your booking!</h2>
+
+            <p>We've received your booking request and your BACS Direct Debit payment is being processed.</p>
+
+            <div style="background: #fff3cd; padding: 20px; margin: 25px 0; border-left: 4px solid #ffc107; border-radius: 8px;">
+                <h3 style="margin: 0 0 10px 0; color: {BRAND_COLORS['navy_primary']};"><strong>⏳ Payment Processing</strong></h3>
+                <p style="margin: 5px 0;">Your BACS Direct Debit payment is being processed. This typically takes <strong>3-5 business days</strong> to clear.</p>
+                <p style="margin: 5px 0;">We'll send you a confirmation email once your payment clears.</p>
+            </div>
+
+            <div style="background: linear-gradient(to right, #f0fdf4 0%, #dcfce7 100%);
+                        border-left: 4px solid #10b981; padding: 20px; border-radius: 8px; margin: 30px 0;">
+                <h3 style="margin: 0 0 15px 0; color: {BRAND_COLORS['navy_primary']};"><strong>📅 Booking Details</strong></h3>
+                <p style="margin: 5px 0;"><strong>Booking ID:</strong> {booking_id}</p>
+                <p style="margin: 5px 0;"><strong>Date:</strong> {date}{tee_time_display}</p>
+                <p style="margin: 5px 0;"><strong>Players:</strong> {players}</p>
+                <p style="margin: 5px 0;"><strong>Amount:</strong> €{amount:.2f}</p>
+                <p style="margin: 5px 0;"><strong>Status:</strong> Pending (BACS clearing)</p>
+            </div>
+
+            <div style="background: linear-gradient(to right, #eff6ff 0%, #dbeafe 100%);
+                        border-left: 4px solid {BRAND_COLORS['royal_blue']};
+                        padding: 20px; border-radius: 8px; margin: 30px 0;">
+                <h3 style="margin: 0 0 15px 0; color: {BRAND_COLORS['navy_primary']};"><strong>📋 What Happens Next?</strong></h3>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li style="margin: 8px 0;">Your payment will clear in 3-5 business days</li>
+                    <li style="margin: 8px 0;">We'll send you a confirmation email once payment is confirmed</li>
+                    <li style="margin: 8px 0;">Your tee time is reserved pending payment confirmation</li>
+                    <li style="margin: 8px 0;">No further action is required from you</li>
+                </ul>
+            </div>
+
+            <div style="background: linear-gradient(to right, #fef3c7 0%, #fde68a 100%);
+                        border-left: 4px solid {BRAND_COLORS['gold_accent']};
+                        padding: 20px; border-radius: 8px; margin: 30px 0;">
+                <h3 style="margin: 0 0 15px 0; color: {BRAND_COLORS['navy_primary']};"><strong>ℹ️ BACS Direct Debit Information</strong></h3>
+                <p style="margin: 5px 0;">BACS Direct Debit is a secure and cost-effective payment method used throughout the UK and Ireland.</p>
+                <p style="margin: 5px 0;">Your payment is protected by the Direct Debit Guarantee.</p>
+            </div>
+
+            <p style="margin-top: 30px;">Thank you for choosing {FROM_NAME}. We look forward to welcoming you!</p>
+
+            <p style="margin-top: 20px;">If you have any questions, please don't hesitate to reply to this email.</p>
+        </div>
+
+        {get_email_footer()}
+        """
+
+        # Send email
+        if send_email_sendgrid(guest_email, subject, html_body):
+            logging.info(f"✅ Sent BACS pending email to {guest_email}")
+        else:
+            logging.error(f"❌ Failed to send BACS pending email to {guest_email}")
+
+    except Exception as e:
+        logging.error(f"❌ Error sending BACS pending email: {str(e)}")
+
+
+def send_bacs_confirmed_email(booking_id: str, guest_email: str, date: str, tee_time: str, players: int, amount_paid: float):
+    """
+    Send final confirmation email after BACS payment clears (3-5 days after checkout)
+    """
+    try:
+        # Format tee time display
+        tee_time_display = f" at {tee_time}" if tee_time else ""
+
+        # Create email body
+        subject = f"✅ Payment Confirmed (BACS Cleared) - {booking_id}"
+
+        html_body = f"""
+        {get_email_header()}
+
+        <div style="max-width: 600px; margin: 0 auto; background: white; padding: 40px 30px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <div style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                            color: white; padding: 15px 30px; border-radius: 50px; font-size: 24px; font-weight: bold;">
+                    ✅ BACS Payment Cleared!
+                </div>
+            </div>
+
+            <h2 style="color: {BRAND_COLORS['navy_primary']}; margin-bottom: 20px;">Your payment has been confirmed!</h2>
+
+            <p>Great news! Your BACS Direct Debit payment has cleared and your booking is now fully confirmed.</p>
+
+            <div style="background: linear-gradient(to right, #f0fdf4 0%, #dcfce7 100%);
+                        border-left: 4px solid #10b981; padding: 20px; border-radius: 8px; margin: 30px 0;">
+                <h3 style="margin: 0 0 15px 0; color: {BRAND_COLORS['navy_primary']};"><strong>📅 Confirmed Booking Details</strong></h3>
+                <p style="margin: 5px 0;"><strong>Booking ID:</strong> {booking_id}</p>
+                <p style="margin: 5px 0;"><strong>Date:</strong> {date}{tee_time_display}</p>
+                <p style="margin: 5px 0;"><strong>Players:</strong> {players}</p>
+                <p style="margin: 5px 0;"><strong>Amount Paid:</strong> €{amount_paid:.2f} (BACS Direct Debit)</p>
+                <p style="margin: 5px 0;"><strong>Status:</strong> ✅ Confirmed</p>
+            </div>
+
+            <div style="background: linear-gradient(to right, #eff6ff 0%, #dbeafe 100%);
+                        border-left: 4px solid {BRAND_COLORS['royal_blue']};
+                        padding: 20px; border-radius: 8px; margin: 30px 0;">
+                <h3 style="margin: 0 0 15px 0; color: {BRAND_COLORS['navy_primary']};"><strong>📋 What's Next?</strong></h3>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li style="margin: 8px 0;">Your tee time is now fully confirmed</li>
+                    <li style="margin: 8px 0;">Please arrive 30 minutes before your tee time</li>
+                    <li style="margin: 8px 0;">Bring your booking confirmation (this email)</li>
+                    <li style="margin: 8px 0;">Don't forget your golf clubs and suitable attire</li>
+                </ul>
+            </div>
+
+            <div style="background: linear-gradient(to right, #fef3c7 0%, #fde68a 100%);
+                        border-left: 4px solid {BRAND_COLORS['gold_accent']};
+                        padding: 20px; border-radius: 8px; margin: 30px 0;">
+                <h3 style="margin: 0 0 15px 0; color: {BRAND_COLORS['navy_primary']};"><strong>ℹ️ Important Information</strong></h3>
+                <p style="margin: 5px 0;">If you need to modify or cancel your booking, please contact us as soon as possible.</p>
+                <p style="margin: 5px 0;">Our cancellation policy: Cancellations must be made at least 48 hours in advance for a full refund.</p>
+            </div>
+
+            <p style="margin-top: 30px;">We look forward to welcoming you to {FROM_NAME}!</p>
+
+            <p style="margin-top: 20px;">If you have any questions, please don't hesitate to reply to this email.</p>
+        </div>
+
+        {get_email_footer()}
+        """
+
+        # Send email
+        if send_email_sendgrid(guest_email, subject, html_body):
+            logging.info(f"✅ Sent BACS confirmed email to {guest_email}")
+        else:
+            logging.error(f"❌ Failed to send BACS confirmed email to {guest_email}")
+
+    except Exception as e:
+        logging.error(f"❌ Error sending BACS confirmed email: {str(e)}")
 
 
 # ============================================================================
