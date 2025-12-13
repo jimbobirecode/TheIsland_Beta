@@ -513,7 +513,20 @@ class EnhancedEmailParser:
             if term in text_lower:
                 return count
 
-        # Look for number patterns
+        # Look for "X golfers on any given day" or "X golfers per day" (for corporate groups)
+        per_day_patterns = [
+            r'(\d+)\s*golfers?\s*(?:on any given day|per day|each day|a day)',
+            r'(\d+)\s*players?\s*(?:on any given day|per day|each day|a day)',
+        ]
+
+        for pattern in per_day_patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                count = int(match.group(1))
+                if 1 <= count <= 100:  # Allow larger corporate groups
+                    return count
+
+        # Look for general number patterns
         player_patterns = [
             r'(\d+)\s*(?:players?|people|persons?|golfers?|guests?)',
             r'(?:party|group)\s*of\s*(\d+)',
@@ -524,7 +537,7 @@ class EnhancedEmailParser:
             match = re.search(pattern, text_lower)
             if match:
                 count = int(match.group(1))
-                if 1 <= count <= 8:  # Reasonable range
+                if 1 <= count <= 100:  # Increased from 8 to 100 for corporate groups
                     return count
 
         return None
@@ -590,9 +603,33 @@ class EnhancedEmailParser:
 
     def _classify_intent(self, text: str, text_lower: str, entity: BookingEntity) -> IntentType:
         """Classify email intent"""
-        # Confirmation keywords
-        if any(word in text_lower for word in ['confirm', 'yes', 'proceed', 'accept', 'agreed']):
-            return IntentType.CONFIRMATION
+        # Question keywords (check FIRST before other classifications)
+        question_indicators = [
+            'could you please advise', 'could you advise', 'please advise',
+            'would you have availability', 'do you have availability',
+            'reaching out to check', 'checking availability',
+            'question', 'query', 'wondering', 'curious',
+            'can you tell', 'what is', 'how do', 'when can',
+            'please confirm', 'could you confirm',  # Asking for confirmation, not giving it
+        ]
+
+        for indicator in question_indicators:
+            if indicator in text_lower:
+                return IntentType.QUESTION
+
+        # Confirmation keywords (customer confirming a booking)
+        # Use word boundaries to avoid false positives
+        confirmation_patterns = [
+            r'\b(?:i |we )?confirm(?:ing)?\b',
+            r'\byes,? (?:i|we) (?:confirm|accept|agree)\b',
+            r'\bproceed with (?:the )?booking\b',
+        ]
+
+        for pattern in confirmation_patterns:
+            if re.search(pattern, text_lower):
+                # But not if they're asking questions
+                if 'could you' not in text_lower and 'please advise' not in text_lower:
+                    return IntentType.CONFIRMATION
 
         # Cancellation keywords
         if any(word in text_lower for word in ['cancel', 'cancellation', 'no longer', 'withdraw']):
@@ -601,11 +638,6 @@ class EnhancedEmailParser:
         # Modification keywords
         if any(word in text_lower for word in ['change', 'modify', 'reschedule', 'move', 'update']):
             return IntentType.MODIFICATION
-
-        # Question keywords
-        if any(word in text_lower for word in ['question', 'query', 'wondering', 'curious', 'can you tell', 'what is']):
-            if not entity.booking_dates and not entity.lodging_requested:
-                return IntentType.QUESTION
 
         # Lodging + Tee time = Combined
         if entity.lodging_requested and entity.booking_dates:
@@ -816,13 +848,35 @@ class EnhancedEmailParser:
         return None
 
     def _extract_date_ranges(self, text: str) -> List[str]:
-        """Extract date ranges (e.g., 'April 9-11')"""
+        """Extract date ranges (e.g., 'April 9-11', 'September 10th 2027 - 22nd')"""
         dates = []
 
-        # Pattern: "Month DD-DD" or "DD-DD Month"
+        # Pattern 1: "Month DD YYYY - DD" (e.g., "September 10th 2027 – 22nd")
+        range_with_year_patterns = [
+            r'((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\d{4})\s*[-–—]\s*(\d{1,2})(?:st|nd|rd|th)?',
+        ]
+
+        for pattern in range_with_year_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                try:
+                    month = match.group(1)
+                    start_day = int(match.group(2))
+                    year = int(match.group(3))
+                    end_day = int(match.group(4))
+
+                    for day in range(start_day, end_day + 1):
+                        date_str = f"{month} {day} {year}"
+                        parsed = self._parse_date_flexible(date_str)
+                        if parsed:
+                            dates.append(parsed)
+                except:
+                    continue
+
+        # Pattern 2: "Month DD-DD" or "DD-DD Month" (without year)
         range_patterns = [
-            r'((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\s+(\d{1,2})\s*-\s*(\d{1,2})',
-            r'(\d{1,2})\s*-\s*(\d{1,2})\s+((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)',
+            r'((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\s+(\d{1,2})(?:st|nd|rd|th)?\s*[-–—]\s*(\d{1,2})(?:st|nd|rd|th)?',
+            r'(\d{1,2})(?:st|nd|rd|th)?\s*[-–—]\s*(\d{1,2})(?:st|nd|rd|th)?\s+((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)',
         ]
 
         for pattern in range_patterns:
@@ -840,6 +894,7 @@ class EnhancedEmailParser:
                         start_day = int(match.group(2))
                         end_day = int(match.group(3))
 
+                    # Use current year as default, but prefer future dates
                     year = datetime.now().year
                     for day in range(start_day, end_day + 1):
                         date_str = f"{month} {day} {year}"
