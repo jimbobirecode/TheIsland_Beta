@@ -170,6 +170,9 @@ class EnhancedEmailParser:
         # Relative dates
         r'(?:on|for|date[:\s]*)\s*(next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))',
         r'(?:on|for|date[:\s]*)\s*(this\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))',
+        r'\b(this\s+(?:morning|afternoon|evening))\b',  # "this afternoon"
+        r'\b(today)\b',
+        r'\b(tomorrow)\b',
         r'(?:on|for|date[:\s]*)\s*(tomorrow)',
         r'(?:on|for|date[:\s]*)\s*(day\s+after\s+tomorrow)',
         r'(?:on|for|date[:\s]*)\s*(next\s+week)',
@@ -411,10 +414,21 @@ class EnhancedEmailParser:
                 entity.num_nights = int(nights_match.group(1))
 
             # Extract number of rooms
-            rooms_match = re.search(r'(\d+)\s*rooms?', text_lower)
-            if rooms_match:
-                entity.num_rooms = int(rooms_match.group(1))
-            else:
+            # Try specific patterns first
+            rooms_patterns = [
+                r'(\d+)\s*(?:double|single|twin|queen|king|suite)?\s*rooms?',
+                r'(\d+)\s*rooms?',
+            ]
+
+            rooms_found = False
+            for pattern in rooms_patterns:
+                rooms_match = re.search(pattern, text_lower)
+                if rooms_match:
+                    entity.num_rooms = int(rooms_match.group(1))
+                    rooms_found = True
+                    break
+
+            if not rooms_found:
                 # Default to 1 room if not specified
                 entity.num_rooms = 1
 
@@ -501,19 +515,7 @@ class EnhancedEmailParser:
         """Extract number of players"""
         text_lower = text.lower()
 
-        # Special golf terms
-        golf_groups = {
-            'foursome': 4, 'four-some': 4, 'four ball': 4,
-            'threesome': 3, 'three-some': 3, 'three ball': 3,
-            'twosome': 2, 'two-some': 2, 'two ball': 2,
-            'single': 1, 'solo': 1,
-        }
-
-        for term, count in golf_groups.items():
-            if term in text_lower:
-                return count
-
-        # Look for "X golfers on any given day" or "X golfers per day" (for corporate groups)
+        # Look for "X golfers on any given day" or "X golfers per day" (for corporate groups) - HIGHEST PRIORITY
         per_day_patterns = [
             r'(\d+)\s*golfers?\s*(?:on any given day|per day|each day|a day)',
             r'(\d+)\s*players?\s*(?:on any given day|per day|each day|a day)',
@@ -526,19 +528,43 @@ class EnhancedEmailParser:
                 if 1 <= count <= 100:  # Allow larger corporate groups
                     return count
 
-        # Look for general number patterns
+        # Look for general number patterns - SECOND PRIORITY
         player_patterns = [
+            r'(?:group|party)\s*of\s*(\d+)\s*(?:players?|people|persons?|golfers?)',  # "group of 8 golfers"
             r'(\d+)\s*(?:players?|people|persons?|golfers?|guests?)',
             r'(?:party|group)\s*of\s*(\d+)',
-            r'(?:for|with)\s*(\d+)',
         ]
 
         for pattern in player_patterns:
-            match = re.search(pattern, text_lower)
-            if match:
-                count = int(match.group(1))
-                if 1 <= count <= 100:  # Increased from 8 to 100 for corporate groups
-                    return count
+            matches = re.finditer(pattern, text_lower)
+            for match in matches:
+                # Avoid matching dates like "15 April" as "15 players"
+                before = text_lower[max(0, match.start()-20):match.start()]
+                after = text_lower[match.end():match.end()+20]
+
+                # Check if month names are nearby (avoid date false positives)
+                month_names = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+                is_date = any(month in before or month in after for month in month_names)
+
+                # Also check for "split into X foursomes" which indicates grouping, not total
+                is_grouping = 'split into' in before or 'into' in before
+
+                if not is_date and not is_grouping:
+                    count = int(match.group(1))
+                    if 1 <= count <= 100:
+                        return count
+
+        # Special golf terms - LAST PRIORITY (only if no explicit number found)
+        golf_groups = {
+            'foursome': 4, 'four-some': 4, 'four ball': 4,
+            'threesome': 3, 'three-some': 3, 'three ball': 3,
+            'twosome': 2, 'two-some': 2, 'two ball': 2,
+            'single': 1, 'solo': 1,
+        }
+
+        for term, count in golf_groups.items():
+            if term in text_lower:
+                return count
 
         return None
 
@@ -607,10 +633,14 @@ class EnhancedEmailParser:
         question_indicators = [
             'could you please advise', 'could you advise', 'please advise',
             'would you have availability', 'do you have availability',
+            'do you have', 'can you accommodate', 'what tee times',
+            'what is the', 'what are the', 'how much', 'what\'s the pricing',
+            'what dates', 'any availability', 'any tee times',
             'reaching out to check', 'checking availability',
             'question', 'query', 'wondering', 'curious',
             'can you tell', 'what is', 'how do', 'when can',
             'please confirm', 'could you confirm',  # Asking for confirmation, not giving it
+            'let me know', 'could you let me know',
         ]
 
         for indicator in question_indicators:
@@ -787,7 +817,9 @@ class EnhancedEmailParser:
         today = datetime.now()
         date_str_lower = date_str.lower()
 
-        if 'tomorrow' in date_str_lower:
+        if 'today' in date_str_lower or 'this morning' in date_str_lower or 'this afternoon' in date_str_lower or 'this evening' in date_str_lower:
+            return today.strftime('%Y-%m-%d')
+        elif 'tomorrow' in date_str_lower:
             return (today + timedelta(days=1)).strftime('%Y-%m-%d')
         elif 'day after tomorrow' in date_str_lower:
             return (today + timedelta(days=2)).strftime('%Y-%m-%d')
