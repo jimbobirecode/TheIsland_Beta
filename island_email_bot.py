@@ -1654,7 +1654,89 @@ def is_staff_confirmation(subject: str, body: str, from_email: str) -> bool:
 
 
 # ============================================================================
-# SIMPLE EMAIL PARSING
+# ENHANCED EMAIL PARSING WITH NLP
+# ============================================================================
+
+try:
+    from enhanced_nlp import parse_booking_email, IntentType, UrgencyLevel
+    ENHANCED_NLP_AVAILABLE = True
+except ImportError:
+    ENHANCED_NLP_AVAILABLE = False
+    logging.warning("Enhanced NLP module not available, using legacy parsing")
+
+
+def parse_email_enhanced(subject: str, body: str, from_email: str = "", from_name: str = "") -> Dict:
+    """
+    Enhanced email parsing using comprehensive NLP
+    Returns enriched data including tee times, lodging, and more
+    """
+    if not ENHANCED_NLP_AVAILABLE:
+        # Fallback to simple parsing
+        return parse_email_simple(subject, body)
+
+    try:
+        # Use enhanced NLP parser
+        entity = parse_booking_email(body, subject, from_email, from_name)
+
+        # Convert to backward-compatible format
+        result = {
+            'players': entity.player_count or 4,  # Default to 4
+            'dates': entity.booking_dates,
+            'preferred_date': entity.preferred_date,
+            'tee_times': entity.tee_times,
+            'preferred_time': entity.preferred_time,
+            'flexible_dates': entity.flexible_dates,
+            'flexible_times': entity.flexible_times,
+
+            # Lodging information (NEW)
+            'lodging_requested': entity.lodging_requested,
+            'check_in_date': entity.check_in_date,
+            'check_out_date': entity.check_out_date,
+            'num_nights': entity.num_nights,
+            'num_rooms': entity.num_rooms,
+            'room_type': entity.room_type,
+
+            # Contact information
+            'contact_name': entity.contact_name,
+            'contact_email': entity.contact_email,
+            'contact_phone': entity.contact_phone,
+
+            # Additional details
+            'special_requests': entity.special_requests,
+            'dietary_requirements': entity.dietary_requirements,
+            'golf_experience': entity.golf_experience,
+
+            # Intent and urgency
+            'intent': entity.intent.value if entity.intent else 'unknown',
+            'urgency': entity.urgency.value if entity.urgency else 'unknown',
+
+            # Confidence scores
+            'date_confidence': entity.date_confidence,
+            'time_confidence': entity.time_confidence,
+            'lodging_confidence': entity.lodging_confidence,
+
+            # Raw data for debugging
+            'raw_dates': entity.raw_dates,
+            'raw_times': entity.raw_times,
+            'extracted_entities': entity.extracted_entities,
+        }
+
+        logging.info(f"✨ Enhanced NLP parsing: {len(entity.booking_dates)} dates, "
+                    f"{len(entity.tee_times)} times, "
+                    f"lodging: {entity.lodging_requested}, "
+                    f"intent: {entity.intent.value}, "
+                    f"urgency: {entity.urgency.value}")
+
+        return result
+
+    except Exception as e:
+        logging.error(f"Enhanced NLP parsing failed: {e}", exc_info=True)
+        # Fallback to simple parsing
+        return parse_email_simple(subject, body)
+
+
+# ============================================================================
+# SIMPLE EMAIL PARSING (Legacy - Fallback)
 # ============================================================================
 
 def parse_email_simple(subject: str, body: str) -> Dict:
@@ -2062,8 +2144,9 @@ def handle_inbound_email():
             logging.warning(f"⚠️  Empty body (responded in {elapsed:.2f}s)")
             return jsonify({'status': 'empty_body'}), 200
 
-        # Parse basic info
-        parsed = parse_email_simple(subject, body)
+        # Parse basic info with enhanced NLP
+        sender_name = from_email.split('<')[0].strip() if '<' in from_email else ""
+        parsed = parse_email_enhanced(subject, body, sender_email, sender_name)
 
         # FLOW DETECTION
         # ==============
