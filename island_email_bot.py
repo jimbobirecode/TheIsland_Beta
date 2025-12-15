@@ -56,6 +56,7 @@ from urllib.parse import quote
 from threading import Thread
 import time
 import stripe
+from email_storage import save_inbound_email, update_email_processing_status
 
 app = Flask(__name__)
 
@@ -2244,6 +2245,7 @@ def handle_inbound_email():
 
     try:
         from_email = request.form.get('from', '')
+        to_email = request.form.get('to', '')
         subject = request.form.get('subject', '')
         text_body = request.form.get('text', '')
         html_body = request.form.get('html', '')
@@ -2255,10 +2257,26 @@ def handle_inbound_email():
         logging.info("="*80)
         logging.info(f"📨 INBOUND WEBHOOK")
         logging.info(f"From: {from_email}")
+        logging.info(f"To: {to_email}")
         logging.info(f"Subject: {subject}")
         logging.info(f"Body (first 200 chars): {body[:200] if body else 'EMPTY'}")
         logging.info(f"Message-ID: {message_id}")
         logging.info("="*80)
+
+        # Save email to database immediately
+        try:
+            save_inbound_email(
+                message_id=message_id,
+                from_email=from_email,
+                to_email=to_email,
+                subject=subject,
+                text_body=text_body,
+                html_body=html_body,
+                headers=headers
+            )
+            logging.info(f"✅ Email saved to database (message_id: {message_id})")
+        except Exception as e:
+            logging.error(f"❌ Failed to save email to database: {e}")
 
         # CRITICAL: Check for duplicate FIRST (prevents retries from processing)
         if message_id and is_duplicate_message(message_id):
@@ -2353,6 +2371,16 @@ def handle_inbound_email():
 
                     update_booking_in_db(booking_id, updates)
 
+                    # Update email processing status
+                    try:
+                        update_email_processing_status(
+                            message_id=message_id,
+                            status='processed',
+                            booking_id=booking_id
+                        )
+                    except Exception as e:
+                        logging.error(f"❌ Failed to update email processing status: {e}")
+
                     elapsed = time.time() - start_time
                     logging.info(f"✅ Booking confirmed in DB (responded in {elapsed:.2f}s)")
 
@@ -2417,6 +2445,16 @@ def handle_inbound_email():
 
                 update_booking_in_db(booking_id, updates)
 
+                # Update email processing status
+                try:
+                    update_email_processing_status(
+                        message_id=message_id,
+                        status='processed',
+                        booking_id=booking_id
+                    )
+                except Exception as e:
+                    logging.error(f"❌ Failed to update email processing status: {e}")
+
                 elapsed = time.time() - start_time
                 logging.info(f"✅ Booking request saved to DB (responded in {elapsed:.2f}s)")
 
@@ -2455,6 +2493,16 @@ def handle_inbound_email():
                     update_booking_in_db(booking_id, {
                         'note': new_note
                     })
+
+                    # Update email processing status
+                    try:
+                        update_email_processing_status(
+                            message_id=message_id,
+                            status='processed',
+                            booking_id=booking_id
+                        )
+                    except Exception as e:
+                        logging.error(f"❌ Failed to update email processing status: {e}")
 
                     elapsed = time.time() - start_time
                     logging.info(f"✅ Reply processed (responded in {elapsed:.2f}s)")
@@ -2509,6 +2557,17 @@ def handle_inbound_email():
 
         # Save to database IMMEDIATELY
         save_booking_to_db(new_entry)
+
+        # Update email processing status
+        try:
+            update_email_processing_status(
+                message_id=message_id,
+                status='processed',
+                booking_id=booking_id,
+                parsed_data=parsed
+            )
+        except Exception as e:
+            logging.error(f"❌ Failed to update email processing status: {e}")
 
         elapsed = time.time() - start_time
         logging.info(f"✅ Inquiry saved to DB (responded in {elapsed:.2f}s)")
