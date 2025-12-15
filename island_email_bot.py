@@ -618,6 +618,47 @@ def init_database():
                 logging.warning(f"⚠️  Could not update status constraint: {e}")
                 # Continue anyway - constraint might not exist on all deployments
 
+        # Check and create guest_emails table for logging all inbound emails
+        logging.info("🔍 Checking guest_emails table...")
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_name = 'guest_emails'
+            );
+        """)
+        guest_emails_exists = cursor.fetchone()[0]
+
+        if not guest_emails_exists:
+            logging.info("⚙️  Creating guest_emails table...")
+            cursor.execute("""
+                CREATE TABLE guest_emails (
+                    id SERIAL PRIMARY KEY,
+                    message_id VARCHAR(255) UNIQUE NOT NULL,
+                    from_email VARCHAR(255) NOT NULL,
+                    to_email VARCHAR(255),
+                    subject TEXT,
+                    body_text TEXT,
+                    body_html TEXT,
+                    details JSONB,
+                    received_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    processed BOOLEAN DEFAULT FALSE,
+                    booking_id VARCHAR(255),
+                    waitlist_id VARCHAR(50),
+                    email_type VARCHAR(50),
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_emails_message_id ON guest_emails(message_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_emails_from_email ON guest_emails(from_email);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_emails_booking_id ON guest_emails(booking_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_emails_waitlist_id ON guest_emails(waitlist_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_emails_received_at ON guest_emails(received_at DESC);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_emails_email_type ON guest_emails(email_type);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_emails_processed ON guest_emails(processed);")
+            logging.info("✅ guest_emails table created")
+        else:
+            logging.info("📋 guest_emails table exists")
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_email ON bookings(guest_email);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_message_id ON bookings(message_id);")
@@ -1981,6 +2022,103 @@ def process_waitlist_optin(from_email: str, subject: str, body: str, message_id:
 
 
 # ============================================================================
+# EMAIL LOGGING FUNCTIONS
+# ============================================================================
+
+def log_inbound_email_to_db(message_id: str, from_email: str, to_email: str, subject: str,
+                            body_text: str, body_html: str, headers: str, email_type: str = None,
+                            booking_id: str = None, waitlist_id: str = None) -> bool:
+    """
+    Log inbound email to guest_emails table with full content and metadata
+
+    Args:
+        message_id: Unique email message ID
+        from_email: Sender email address
+        to_email: Recipient email address (our booking email)
+        subject: Email subject line
+        body_text: Plain text body
+        body_html: HTML body
+        headers: Raw email headers
+        email_type: Type of email (inquiry, booking_request, staff_confirmation, etc)
+        booking_id: Associated booking ID if applicable
+        waitlist_id: Associated waitlist ID if applicable
+
+    Returns:
+        bool: True if logged successfully, False otherwise
+    """
+    conn = None
+    try:
+        # Build details JSON with full metadata
+        details = {
+            'headers': headers,
+            'body_length_text': len(body_text) if body_text else 0,
+            'body_length_html': len(body_html) if body_html else 0,
+            'has_html': bool(body_html),
+            'has_text': bool(body_text)
+        }
+
+        # Extract additional metadata from headers if available
+        if headers:
+            # Parse useful headers
+            if 'User-Agent:' in headers:
+                user_agent_match = re.search(r'User-Agent:\s*(.+)', headers)
+                if user_agent_match:
+                    details['user_agent'] = user_agent_match.group(1).strip()
+
+            if 'X-Mailer:' in headers:
+                mailer_match = re.search(r'X-Mailer:\s*(.+)', headers)
+                if mailer_match:
+                    details['mailer'] = mailer_match.group(1).strip()
+
+        conn = get_db_connection()
+        if not conn:
+            logging.error("❌ Cannot log email - no database connection")
+            return False
+
+        cursor = conn.cursor()
+
+        # Insert email log (using ON CONFLICT to prevent duplicates)
+        cursor.execute("""
+            INSERT INTO guest_emails
+            (message_id, from_email, to_email, subject, body_text, body_html, details,
+             email_type, booking_id, waitlist_id, received_at, processed)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), FALSE)
+            ON CONFLICT (message_id) DO NOTHING
+            RETURNING id;
+        """, (
+            message_id,
+            from_email,
+            to_email,
+            subject,
+            body_text,
+            body_html,
+            json.dumps(details),
+            email_type,
+            booking_id,
+            waitlist_id
+        ))
+
+        result = cursor.fetchone()
+        conn.commit()
+        cursor.close()
+        release_db_connection(conn)
+
+        if result:
+            logging.info(f"📧 Email logged to database (message_id: {message_id})")
+            return True
+        else:
+            logging.info(f"📧 Email already logged (duplicate message_id: {message_id})")
+            return True  # Still return True since it was logged previously
+
+    except Exception as e:
+        logging.error(f"❌ Failed to log email to database: {e}")
+        if conn:
+            conn.rollback()
+            release_db_connection(conn)
+        return False
+
+
+# ============================================================================
 # WEBHOOK ENDPOINTS
 # ============================================================================
 
@@ -2064,6 +2202,43 @@ def handle_inbound_email():
 
         # Parse basic info
         parsed = parse_email_simple(subject, body)
+
+        # LOG EMAIL TO DATABASE (do this early before flow detection)
+        # Get recipient email (to_email)
+        to_email = request.form.get('to', CLUB_BOOKING_EMAIL)
+
+        # Determine email type based on flow detection
+        email_type = 'unknown'
+        detected_booking_id = None
+        detected_waitlist_id = None
+
+        if is_staff_confirmation(subject, body, sender_email):
+            email_type = 'staff_confirmation'
+            detected_booking_id = extract_booking_id(subject) or extract_booking_id(body)
+        elif is_booking_request(subject, body):
+            email_type = 'booking_request'
+            detected_booking_id = extract_booking_id(subject) or extract_booking_id(body)
+        elif is_customer_reply(subject, body):
+            email_type = 'customer_reply'
+            detected_booking_id = extract_booking_id(subject) or extract_booking_id(body)
+        elif is_waitlist_optin_email(subject):
+            email_type = 'waitlist_optin'
+        else:
+            email_type = 'inquiry'
+
+        # Log email to database
+        log_inbound_email_to_db(
+            message_id=message_id or f"no-id-{datetime.now().timestamp()}",
+            from_email=sender_email,
+            to_email=to_email,
+            subject=subject,
+            body_text=text_body,
+            body_html=html_body,
+            headers=headers,
+            email_type=email_type,
+            booking_id=detected_booking_id,
+            waitlist_id=detected_waitlist_id
+        )
 
         # FLOW DETECTION
         # ==============
