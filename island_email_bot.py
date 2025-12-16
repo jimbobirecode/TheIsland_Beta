@@ -1587,26 +1587,28 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                         })
                 else:
                     logging.warning(f"   API returned non-200 status: {response.status_code}")
-                    # Send fallback email
-                    html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
-                    subject_line = "Tee Time Inquiry - Golf Club"
+                    # Send no availability email with waitlist option
+                    preferred_time = parsed.get('preferred_time') if parsed else None
+                    html_email = format_no_availability_email(players, guest_email=sender_email, dates=dates, preferred_time=preferred_time)
+                    subject_line = "Tee Time Availability - Golf Club"
                     send_email_sendgrid(sender_email, subject_line, html_email)
 
                     update_booking_in_db(booking_id, {
                         'status': 'Inquiry',
-                        'note': 'Initial inquiry received. API unavailable - manual follow-up needed.'
+                        'note': 'Initial inquiry received. API unavailable - sent no availability email with waitlist option.'
                     })
 
             except requests.RequestException as e:
                 logging.error(f"   ❌ API error: {e}")
-                # Send fallback email
-                html_email = format_inquiry_received_email(parsed, sender_email, booking_id)
-                subject_line = "Tee Time Inquiry - Golf Club"
+                # Send no availability email with waitlist option
+                preferred_time = parsed.get('preferred_time') if parsed else None
+                html_email = format_no_availability_email(players, guest_email=sender_email, dates=dates, preferred_time=preferred_time)
+                subject_line = "Tee Time Availability - Golf Club"
                 send_email_sendgrid(sender_email, subject_line, html_email)
 
                 update_booking_in_db(booking_id, {
                     'status': 'Inquiry',
-                    'note': f'Initial inquiry received. API error: {str(e)}'
+                    'note': f'Initial inquiry received. API error: {str(e)}. Sent no availability email with waitlist option.'
                 })
         else:
             # No dates found - send "please provide dates" email
