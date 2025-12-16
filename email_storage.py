@@ -77,7 +77,7 @@ def save_inbound_email(
         cursor.execute("""
             INSERT INTO inbound_emails (
                 message_id, from_email, to_email, subject,
-                text_body, html_body, headers, attachments,
+                body_text, body_html, headers, attachments,
                 booking_id, parsed_data, processing_status,
                 received_at, club
             ) VALUES (
@@ -190,7 +190,7 @@ def get_inbound_email(message_id: str) -> Optional[Dict[str, Any]]:
         cursor.execute("""
             SELECT
                 id, message_id, from_email, to_email, subject,
-                text_body, html_body, headers, attachments,
+                body_text, body_html, headers, attachments,
                 booking_id, parsed_data, processing_status,
                 error_message, received_at, processed_at, club
             FROM inbound_emails
@@ -252,7 +252,7 @@ def get_emails_by_booking_id(booking_id: str) -> list:
         cursor.execute("""
             SELECT
                 id, message_id, from_email, subject,
-                text_body, processing_status, received_at
+                body_text, processing_status, received_at
             FROM inbound_emails
             WHERE booking_id = %s
             ORDER BY received_at DESC
