@@ -1509,7 +1509,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
 
         if dates:
             try:
-                # Make the API call (can take up to 120 seconds)
+                # Make the API call using new async pattern
                 api_url = f"{CORE_API_URL}/check_availability"
                 payload = {
                     'course_id': DEFAULT_COURSE_ID,
@@ -1520,48 +1520,86 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                 logging.info(f"   🔗 Calling Core API: {api_url}")
                 logging.info(f"   📦 Payload: {payload}")
 
-                # Make the API call with retry logic
-                max_retries = 2
-                for attempt in range(max_retries + 1):
-                    try:
-                        logging.info(f"   🔄 Attempt {attempt + 1}/{max_retries + 1}")
-                        response = requests.post(
-                            api_url,
-                            json=payload,
-                            timeout=120
-                        )
+                # Make initial API call
+                response = requests.post(
+                    api_url,
+                    json=payload,
+                    timeout=10  # Short timeout for initial request
+                )
 
-                        logging.info(f"   ✅ Core API responded with status: {response.status_code}")
+                logging.info(f"   ✅ Core API responded with status: {response.status_code}")
 
-                        # If successful or not a 502, break the retry loop
-                        if response.status_code != 502:
-                            break
+                # Handle async job pattern (202) or sync pattern (200)
+                if response.status_code == 202:
+                    # New async behavior - poll for results
+                    job_data = response.json()
+                    job_id = job_data.get('job_id')
 
-                        # If 502 and we have retries left, wait and try again
-                        if attempt < max_retries:
-                            logging.warning(f"   ⚠️  Got 502, retrying (attempt {attempt + 2}/{max_retries + 1})...")
-                            time.sleep(10)  # Increased delay from 5s to 10s
-                    except requests.Timeout:
-                        logging.error(f"   ❌ Timeout on attempt {attempt + 1}")
-                        if attempt == max_retries:
-                            raise
-                        logging.info(f"   ⏳ Waiting 10 seconds before retry...")
-                        time.sleep(10)
+                    if not job_id:
+                        logging.error(f"   ❌ No job_id in 202 response")
+                        raise ValueError("No job_id in async response")
 
-                # Log response details for debugging
-                if response.status_code != 200:
-                    logging.error(f"   ❌ API Error Response:")
-                    logging.error(f"      Status: {response.status_code}")
-                    try:
-                        logging.error(f"      Body: {response.text[:500]}")
-                    except:
-                        pass
+                    logging.info(f"   📋 Job created: {job_id}")
+                    logging.info(f"   ⏳ Polling for results...")
 
-                if response.status_code == 200:
+                    # Poll for results
+                    max_poll_attempts = 30  # 60 seconds max (2s * 30)
+                    job_url = f"{CORE_API_URL}/job/{job_id}"
+                    api_data = None
+
+                    for poll_attempt in range(max_poll_attempts):
+                        time.sleep(2)  # Wait 2 seconds between polls
+
+                        try:
+                            job_response = requests.get(job_url, timeout=5)
+                            job_result = job_response.json()
+                            job_status = job_result.get('status')
+
+                            logging.info(f"   🔄 Poll attempt {poll_attempt + 1}/{max_poll_attempts} - Status: {job_status}")
+
+                            if job_status == 'completed':
+                                logging.info(f"   ✅ Job completed successfully")
+                                api_data = job_result.get('result', {})
+                                break
+                            elif job_status == 'failed':
+                                error = job_result.get('error', 'Unknown error')
+                                logging.error(f"   ❌ Job failed: {error}")
+                                raise ValueError(f"Job failed: {error}")
+                            elif job_status == 'timeout':
+                                logging.error(f"   ⏱️  Job timed out")
+                                raise TimeoutError("Job timed out on server")
+                            # Otherwise job is still 'pending' or 'processing', continue polling
+
+                        except requests.RequestException as e:
+                            logging.warning(f"   ⚠️  Poll attempt {poll_attempt + 1} failed: {e}")
+                            if poll_attempt == max_poll_attempts - 1:
+                                raise
+
+                    else:
+                        # Polling timeout - exceeded max attempts
+                        logging.error(f"   ❌ Polling timeout after {max_poll_attempts} attempts")
+                        raise TimeoutError("Polling timeout - job did not complete in time")
+
+                    # Process results from completed job
+                    if api_data:
+                        results = api_data.get('results', [])
+                        logging.info(f"   📊 Job returned {len(results)} results")
+                    else:
+                        logging.error(f"   ❌ No data in completed job")
+                        results = []
+
+                elif response.status_code == 200:
+                    # Old sync behavior - immediate results
                     api_data = response.json()
                     results = api_data.get('results', [])
-                    logging.info(f"   📊 API returned {len(results)} results")
+                    logging.info(f"   📊 API returned {len(results)} results (sync)")
 
+                else:
+                    # Neither 202 nor 200 - unexpected status
+                    results = None
+
+                # Process results (from either async or sync response)
+                if results is not None:
                     if results:
                         # Send inquiry email with available times
                         logging.info(f"   ✅ Found {len(results)} available times")
@@ -1577,7 +1615,8 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                     else:
                         # No availability
                         logging.info(f"   ⚠️  No availability found")
-                        html_email = format_no_availability_email(players, guest_email=sender_email, dates=dates)
+                        preferred_time = parsed.get('preferred_time') if parsed else None
+                        html_email = format_no_availability_email(players, guest_email=sender_email, dates=dates, preferred_time=preferred_time)
                         subject_line = "Tee Time Availability - Golf Club"
                         send_email_sendgrid(sender_email, subject_line, html_email)
 
@@ -1585,7 +1624,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                             'status': 'Inquiry',
                             'note': 'Initial inquiry received. No availability found.'
                         })
-                else:
+                elif response.status_code not in [200, 202]:
                     logging.warning(f"   API returned non-200 status: {response.status_code}")
                     # Send no availability email with waitlist option
                     preferred_time = parsed.get('preferred_time') if parsed else None
@@ -1598,7 +1637,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                         'note': 'Initial inquiry received. API unavailable - sent no availability email with waitlist option.'
                     })
 
-            except requests.RequestException as e:
+            except (requests.RequestException, TimeoutError, ValueError) as e:
                 logging.error(f"   ❌ API error: {e}")
                 # Send no availability email with waitlist option
                 preferred_time = parsed.get('preferred_time') if parsed else None
