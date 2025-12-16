@@ -121,7 +121,8 @@ def update_email_processing_status(
     message_id: str,
     status: str,
     booking_id: str = None,
-    error_message: str = None
+    error_message: str = None,
+    parsed_data: dict = None
 ) -> bool:
     """
     Update the processing status of an inbound email
@@ -131,6 +132,7 @@ def update_email_processing_status(
         status: New status (processed, error, duplicate)
         booking_id: Associated booking ID (optional)
         error_message: Error message if status is 'error' (optional)
+        parsed_data: Parsed booking data from enhanced_nlp (optional)
 
     Returns:
         bool: True if updated successfully
@@ -143,14 +145,18 @@ def update_email_processing_status(
 
         cursor = conn.cursor()
 
+        # Convert parsed_data to JSON
+        parsed_json = json.dumps(parsed_data) if parsed_data else None
+
         cursor.execute("""
             UPDATE inbound_emails
             SET processing_status = %s,
                 processed_at = %s,
                 booking_id = COALESCE(%s, booking_id),
-                error_message = %s
+                error_message = %s,
+                parsed_data = COALESCE(%s::jsonb, parsed_data)
             WHERE message_id = %s
-        """, (status, datetime.now(), booking_id, error_message, message_id))
+        """, (status, datetime.now(), booking_id, error_message, parsed_json, message_id))
 
         conn.commit()
         cursor.close()
