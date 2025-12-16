@@ -1543,7 +1543,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                     logging.info(f"   ⏳ Polling for results...")
 
                     # Poll for results
-                    max_poll_attempts = 30  # 60 seconds max (2s * 30)
+                    max_poll_attempts = 90  # 180 seconds max (2s * 90) - increased to handle slow job processing
                     job_url = f"{CORE_API_URL}/job/{job_id}"
                     api_data = None
 
