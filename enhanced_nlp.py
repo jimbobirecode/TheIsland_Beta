@@ -342,30 +342,64 @@ class EnhancedEmailParser:
                 if parsed_date:
                     dates_found.add(parsed_date)
 
-        # Method 2: dateparser library (if available)
-        if DATEPARSER_AVAILABLE:
-            # Split text into sentences and try to parse each
+        # Method 2: Look for date ranges FIRST (highest priority)
+        date_ranges = self._extract_date_ranges(text_lower)
+        dates_found.update(date_ranges)
+
+        # Method 3: dateparser library (if available) - SELECTIVE USE
+        # Only parse sentences that contain date-related keywords to avoid false positives
+        if DATEPARSER_AVAILABLE and len(dates_found) < 3:  # Only if we haven't found many dates yet
+            date_keywords = [
+                'availability', 'book', 'reserve', 'date', 'window', 'planned',
+                'arrive', 'depart', 'check-in', 'check-out', 'visit', 'travel',
+                'tee time', 'golf', 'stay', 'accommodation'
+            ]
+
             sentences = re.split(r'[.!?\n]', text)
             for sentence in sentences:
-                if len(sentence) > 10:  # Skip very short sentences
+                sentence_lower = sentence.lower()
+
+                # Only process if sentence contains date-related keywords
+                has_date_context = any(keyword in sentence_lower for keyword in date_keywords)
+
+                if has_date_context and len(sentence) > 10:
                     parsed = dateparser.parse(
                         sentence,
                         settings={
                             'PREFER_DATES_FROM': 'future',
                             'RELATIVE_BASE': datetime.now(),
-                            'RETURN_AS_TIMEZONE_AWARE': False
+                            'RETURN_AS_TIMEZONE_AWARE': False,
+                            'STRICT_PARSING': True  # More strict to avoid false positives
                         }
                     )
                     if parsed and parsed > datetime.now() - timedelta(days=1):
                         date_str = parsed.strftime('%Y-%m-%d')
-                        dates_found.add(date_str)
+                        # Only add if not too far in the future (< 5 years)
+                        if parsed < datetime.now() + timedelta(days=365*5):
+                            dates_found.add(date_str)
 
-        # Method 3: Look for date ranges
-        date_ranges = self._extract_date_ranges(text_lower)
-        dates_found.update(date_ranges)
+        # Filter out date outliers to improve accuracy
+        # If we have a cluster of dates (e.g., date range), remove dates that are far from the cluster
+        dates_list = sorted(list(dates_found))
 
-        # Store all found dates
-        entity.booking_dates = sorted(list(dates_found))
+        if len(dates_list) > 3:
+            # Find the most common year/month pattern
+            year_month_counts = {}
+            for date_str in dates_list:
+                year_month = date_str[:7]  # YYYY-MM
+                year_month_counts[year_month] = year_month_counts.get(year_month, 0) + 1
+
+            # Find the most common year-month
+            if year_month_counts:
+                most_common_ym = max(year_month_counts, key=year_month_counts.get)
+
+                # If we have 5+ dates in the same month, filter to only that month
+                if year_month_counts[most_common_ym] >= 5:
+                    dates_list = [d for d in dates_list if d.startswith(most_common_ym)]
+                    logger.info(f"🎯 Filtered to primary date cluster: {most_common_ym} ({len(dates_list)} dates)")
+
+        # Store filtered dates
+        entity.booking_dates = dates_list
 
         # Set preferred date (first one found, or most specific)
         if entity.booking_dates:
