@@ -1560,6 +1560,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                             if job_status == 'completed':
                                 logging.info(f"   ✅ Job completed successfully")
                                 api_data = job_result.get('result', {})
+                                logging.info(f"   📦 Job result structure: {type(api_data)}, keys: {api_data.keys() if isinstance(api_data, dict) else 'not a dict'}")
                                 break
                             elif job_status == 'failed':
                                 error = job_result.get('error', 'Unknown error')
@@ -1584,6 +1585,8 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                     if api_data:
                         results = api_data.get('results', [])
                         logging.info(f"   📊 Job returned {len(results)} results")
+                        if results:
+                            logging.info(f"   📋 First result sample: {results[0] if results else 'none'}")
                     else:
                         logging.error(f"   ❌ No data in completed job")
                         results = []
@@ -1599,12 +1602,15 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                     results = None
 
                 # Process results (from either async or sync response)
+                logging.info(f"   🔍 Processing results: results={'list with ' + str(len(results)) + ' items' if isinstance(results, list) else results}")
                 if results is not None:
                     if results:
                         # Send inquiry email with available times
-                        logging.info(f"   ✅ Found {len(results)} available times")
+                        logging.info(f"   ✅ Found {len(results)} available times - SENDING EMAIL")
                         html_email = format_inquiry_email(results, players, sender_email, booking_id)
                         subject_line = "Available Tee Times at Golf Club"
+                        logging.info(f"   📧 Sending email to: {sender_email}")
+                        logging.info(f"      Subject: {subject_line}")
                         send_email_sendgrid(sender_email, subject_line, html_email)
 
                         # Update status
