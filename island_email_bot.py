@@ -1942,9 +1942,11 @@ def generate_waitlist_id(guest_email: str, timestamp: str) -> str:
 def add_to_waitlist(guest_email: str, dates: list, preferred_time: str, players: int, waitlist_id: str) -> bool:
     """Add customer to waitlist database"""
     try:
+        logging.info(f"🔄 Adding to waitlist: {waitlist_id} | Email: {guest_email} | Dates: {dates} | Players: {players}")
+
         conn = get_db_connection()
         if not conn:
-            logging.error("No database connection for waitlist")
+            logging.error("❌ No database connection for waitlist")
             return False
 
         cursor = conn.cursor()
@@ -1955,6 +1957,8 @@ def add_to_waitlist(guest_email: str, dates: list, preferred_time: str, players:
         # Use first date as requested_date
         requested_date = dates[0] if dates else datetime.now().strftime('%Y-%m-%d')
 
+        logging.info(f"   Inserting into waitlist table: date={requested_date}, time={preferred_time or 'Flexible'}, players={players}")
+
         cursor.execute("""
             INSERT INTO waitlist (
                 waitlist_id, guest_email, guest_name, requested_date,
@@ -1964,6 +1968,7 @@ def add_to_waitlist(guest_email: str, dates: list, preferred_time: str, players:
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW()
             )
             ON CONFLICT (waitlist_id) DO NOTHING
+            RETURNING id
         """, (
             waitlist_id,
             guest_email,
@@ -1978,15 +1983,21 @@ def add_to_waitlist(guest_email: str, dates: list, preferred_time: str, players:
             DATABASE_CLUB_ID
         ))
 
+        result = cursor.fetchone()
         conn.commit()
         cursor.close()
         release_db_connection(conn)
 
-        logging.info(f"✅ Added to waitlist: {waitlist_id} for {guest_email}")
+        if result:
+            logging.info(f"✅ Added to waitlist: {waitlist_id} (DB id: {result[0]}) for {guest_email}")
+        else:
+            logging.warning(f"⚠️  Waitlist entry already exists: {waitlist_id}")
+
         return True
 
     except Exception as e:
         logging.error(f"❌ Error adding to waitlist: {e}")
+        logging.exception("Full error:")
         return False
 
 
@@ -2515,7 +2526,33 @@ def handle_inbound_email():
             start_time = time.time()
             logging.info("📋 DETECTED: WAITLIST OPT-IN")
 
-            status, waitlist_id = process_waitlist_optin(from_email, subject, body, message_id)
+            status, waitlist_id = process_waitlist_optin(sender_email, subject, body, message_id)
+
+            # Update email processing status with waitlist_id
+            if status == 'waitlist_added' and waitlist_id:
+                try:
+                    update_email_processing_status(
+                        message_id=message_id,
+                        status='processed',
+                        booking_id=waitlist_id  # Store waitlist_id as booking_id for tracking
+                    )
+
+                    # Also update inbound_emails with email_type='waitlist'
+                    conn = get_db_connection()
+                    if conn:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            UPDATE inbound_emails
+                            SET email_type = 'waitlist',
+                                waitlist_id = %s
+                            WHERE message_id = %s
+                        """, (waitlist_id, message_id))
+                        conn.commit()
+                        cursor.close()
+                        release_db_connection(conn)
+                        logging.info(f"✅ Email linked to waitlist entry: {waitlist_id}")
+                except Exception as e:
+                    logging.error(f"❌ Failed to update email for waitlist: {e}")
 
             elapsed = time.time() - start_time
             if status == 'waitlist_added':
