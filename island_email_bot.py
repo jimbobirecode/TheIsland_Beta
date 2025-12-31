@@ -1753,12 +1753,91 @@ except ImportError:
     ENHANCED_NLP_AVAILABLE = False
     logging.warning("Enhanced NLP module not available, using legacy parsing")
 
+try:
+    from claude_email_parser import parse_with_claude
+    CLAUDE_PARSER_AVAILABLE = True
+except ImportError:
+    CLAUDE_PARSER_AVAILABLE = False
+    logging.warning("Claude parser module not available")
+
 
 def parse_email_enhanced(subject: str, body: str, from_email: str = "", from_name: str = "") -> Dict:
     """
-    Enhanced email parsing using comprehensive NLP
+    Enhanced email parsing with Claude API as primary parser
+    Falls back to NLP parser, then simple parser if needed
     Returns enriched data including tee times, lodging, and more
     """
+    # Try Claude API parser first (best accuracy)
+    if CLAUDE_PARSER_AVAILABLE:
+        try:
+            logging.info("🤖 Attempting Claude API parsing...")
+            claude_result = parse_with_claude(body, subject)
+
+            # Check if Claude parsing was successful (confidence > 0)
+            if claude_result.get('confidence', 0) > 0 and claude_result.get('parsed_by') == 'claude_api':
+                logging.info(f"✅ Claude parsing successful - Confidence: {claude_result.get('confidence', 0):.0%}")
+
+                # Convert Claude format to backward-compatible format
+                dates = claude_result.get('dates', {})
+                time_pref = claude_result.get('time_preference', {})
+                special_req = claude_result.get('special_requests', {})
+
+                # Build dates list
+                date_list = []
+                if dates.get('start_date'):
+                    date_list.append(dates['start_date'])
+                if dates.get('end_date') and dates.get('end_date') != dates.get('start_date'):
+                    date_list.append(dates['end_date'])
+
+                result = {
+                    'players': claude_result.get('player_count') or 4,
+                    'dates': date_list,
+                    'preferred_date': dates.get('start_date'),
+                    'tee_times': [time_pref.get('preferred_time')] if time_pref.get('preferred_time') else [],
+                    'preferred_time': time_pref.get('preferred_time'),
+                    'flexible_dates': dates.get('is_range', False),
+                    'flexible_times': time_pref.get('flexibility') in ['flexible', 'any'],
+
+                    # Lodging information
+                    'lodging_requested': special_req.get('lodging', False),
+                    'check_in_date': dates.get('start_date') if special_req.get('lodging') else None,
+                    'check_out_date': dates.get('end_date') if special_req.get('lodging') else None,
+                    'num_nights': None,
+                    'num_rooms': None,
+                    'room_type': None,
+
+                    # Contact information
+                    'contact_name': from_name or None,
+                    'contact_email': from_email or None,
+                    'contact_phone': None,
+
+                    # Additional details
+                    'special_requests': claude_result.get('ambiguities', []),
+                    'dietary_requirements': None,
+                    'golf_experience': None,
+
+                    # Intent and urgency
+                    'intent': claude_result.get('intent', 'general_inquiry'),
+                    'urgency': claude_result.get('urgency', 'unknown'),
+
+                    # Confidence scores
+                    'date_confidence': claude_result.get('confidence', 0.5) if date_list else 0.0,
+                    'time_confidence': claude_result.get('confidence', 0.5) if time_pref.get('preferred_time') else 0.0,
+                    'lodging_confidence': claude_result.get('confidence', 0.5) if special_req.get('lodging') else 0.0,
+
+                    # Raw data for debugging
+                    'raw_dates': dates.get('raw_text', ''),
+                    'raw_times': time_pref.get('raw_text', ''),
+                    'extracted_entities': claude_result,
+                    'parsed_by': 'claude_api',
+                }
+
+                return result
+
+        except Exception as e:
+            logging.warning(f"⚠️  Claude parsing failed, falling back to NLP parser: {e}")
+
+    # Fallback to enhanced NLP parser
     if not ENHANCED_NLP_AVAILABLE:
         # Fallback to simple parsing
         return parse_email_simple(subject, body)
@@ -1808,6 +1887,7 @@ def parse_email_enhanced(subject: str, body: str, from_email: str = "", from_nam
             'raw_dates': entity.raw_dates,
             'raw_times': entity.raw_times,
             'extracted_entities': entity.extracted_entities,
+            'parsed_by': 'enhanced_nlp',
         }
 
         logging.info(f"✨ Enhanced NLP parsing: {len(entity.booking_dates)} dates, "
