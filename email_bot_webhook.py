@@ -27,6 +27,14 @@ from urllib.parse import quote
 # Enhanced NLP for parsing
 from enhanced_nlp import parse_booking_email, IntentType, UrgencyLevel
 
+# Claude API parser
+try:
+    from claude_email_parser import parse_with_claude
+    CLAUDE_PARSER_AVAILABLE = True
+except ImportError:
+    CLAUDE_PARSER_AVAILABLE = False
+    logging.warning("Claude parser module not available")
+
 app = Flask(__name__)
 
 # --- CONFIG ---
@@ -1309,6 +1317,104 @@ def is_waitlist_optin_email(subject: str) -> bool:
     """
     subject_upper = subject.upper() if subject else ""
     return "JOIN WAITLIST" in subject_upper
+
+
+def parse_booking_email_with_claude(body: str, subject: str, from_email: str = "", from_name: str = ""):
+    """
+    Parse booking email with Claude API as primary parser, fallback to NLP parser
+    Returns BookingEntity object for compatibility
+    """
+    from enhanced_nlp import BookingEntity
+    from datetime import datetime
+
+    # Try Claude API parser first (best accuracy)
+    if CLAUDE_PARSER_AVAILABLE:
+        try:
+            logging.info("🤖 Attempting Claude API parsing...")
+            claude_result = parse_with_claude(body, subject)
+
+            # Check if Claude parsing was successful (confidence > 0)
+            if claude_result.get('confidence', 0) > 0 and claude_result.get('parsed_by') == 'claude_api':
+                logging.info(f"✅ Claude parsing successful - Confidence: {claude_result.get('confidence', 0):.0%}")
+
+                # Convert Claude format to BookingEntity
+                dates_data = claude_result.get('dates', {})
+                time_pref = claude_result.get('time_preference', {})
+                special_req = claude_result.get('special_requests', {})
+
+                # Build dates list
+                booking_dates = []
+                if dates_data.get('start_date'):
+                    booking_dates.append(dates_data['start_date'])
+                if dates_data.get('end_date') and dates_data.get('end_date') != dates_data.get('start_date'):
+                    booking_dates.append(dates_data['end_date'])
+
+                # Map intent
+                intent_map = {
+                    'booking_request': IntentType.NEW_INQUIRY,
+                    'availability_check': IntentType.NEW_INQUIRY,
+                    'booking_confirmation': IntentType.CONFIRMATION,
+                    'booking_modification': IntentType.MODIFICATION,
+                    'booking_cancellation': IntentType.CANCELLATION,
+                    'general_inquiry': IntentType.GENERAL_INQUIRY,
+                    'pricing_inquiry': IntentType.GENERAL_INQUIRY,
+                    'complaint': IntentType.COMPLAINT
+                }
+                intent = intent_map.get(claude_result.get('intent', 'general_inquiry'), IntentType.UNKNOWN)
+
+                # Map urgency
+                urgency_map = {
+                    'urgent': UrgencyLevel.URGENT,
+                    'soon': UrgencyLevel.HIGH,
+                    'flexible': UrgencyLevel.NORMAL,
+                    'unknown': UrgencyLevel.UNKNOWN
+                }
+                urgency = urgency_map.get(claude_result.get('urgency', 'unknown'), UrgencyLevel.UNKNOWN)
+
+                # Create BookingEntity
+                entity = BookingEntity(
+                    booking_dates=booking_dates,
+                    tee_times=[time_pref.get('preferred_time')] if time_pref.get('preferred_time') else [],
+                    preferred_date=dates_data.get('start_date'),
+                    preferred_time=time_pref.get('preferred_time'),
+                    flexible_dates=dates_data.get('is_range', False),
+                    flexible_times=time_pref.get('flexibility') in ['flexible', 'any'],
+
+                    # Lodging
+                    lodging_requested=special_req.get('lodging', False),
+                    check_in_date=dates_data.get('start_date') if special_req.get('lodging') else None,
+                    check_out_date=dates_data.get('end_date') if special_req.get('lodging') else None,
+
+                    # Contact
+                    player_count=claude_result.get('player_count') or 4,
+                    contact_name=from_name or None,
+                    contact_email=from_email or None,
+
+                    # Additional
+                    special_requests=claude_result.get('ambiguities', []),
+                    intent=intent,
+                    urgency=urgency,
+
+                    # Confidence
+                    date_confidence=claude_result.get('confidence', 0.5) if booking_dates else 0.0,
+                    time_confidence=claude_result.get('confidence', 0.5) if time_pref.get('preferred_time') else 0.0,
+                    lodging_confidence=claude_result.get('confidence', 0.5) if special_req.get('lodging') else 0.0,
+
+                    # Raw data
+                    raw_dates=[dates_data.get('raw_text', '')],
+                    raw_times=[time_pref.get('raw_text', '')],
+                    extracted_entities={'claude_result': claude_result}
+                )
+
+                logging.info(f"🤖 Claude parsed: {len(booking_dates)} dates, {entity.player_count} players, confidence: {entity.confidence:.0%}")
+                return entity
+
+        except Exception as e:
+            logging.warning(f"⚠️  Claude parsing failed, falling back to NLP parser: {e}")
+
+    # Fallback to enhanced NLP parser
+    logging.info("📊 Using enhanced NLP parser...")
+    return parse_booking_email(body, subject, from_email, from_name)
 
 
 def parse_waitlist_optin_subject(subject: str) -> dict:
@@ -2990,8 +3096,8 @@ def handle_inbound_email():
 
         if not body or len(body.strip()) < 10:
             return jsonify({'status': 'empty_body'}), 200
-        
-        parsed = parse_booking_email(body, subject)
+
+        parsed = parse_booking_email_with_claude(body, subject, from_email)
 
         logging.info(f"   Players: {parsed.player_count}")
         logging.info(f"   Confidence: {parsed.confidence:.0%}")
