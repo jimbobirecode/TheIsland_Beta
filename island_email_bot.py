@@ -36,7 +36,7 @@ Additional Flow:
   Note: "Customer replied again on [timestamp]"
 """
 
-from flask import Flask, request, jsonify, redirect
+from flask import Flask, request, jsonify, redirect, render_template
 import logging
 import json
 import os
@@ -2888,8 +2888,8 @@ def create_checkout_session():
 @app.route('/book', methods=['GET'])
 def book_redirect():
     """
-    Simple redirect endpoint for email Book Now buttons
-    Accepts GET parameters and redirects to Stripe checkout
+    Display booking form for customer to fill out details
+    Accepts GET parameters from email Book Now buttons
 
     Parameters:
     - booking_id: ISL-20251209-8C9409B7
@@ -2916,18 +2916,72 @@ def book_redirect():
         players = int(players)
         total = players * PER_PLAYER_FEE
 
-        # Create Stripe checkout session with BACS and SEPA Direct Debit support
-        # Note: BACS and SEPA must be enabled in Stripe dashboard first
-        # If not enabled, will automatically try different combinations
+        # Render booking form template
+        return render_template('booking_form.html',
+                             booking_id=booking_id,
+                             date=date,
+                             tee_time=tee_time,
+                             players=players,
+                             guest_email=guest_email,
+                             total=total,
+                             club_name=FROM_NAME)
 
-        # Common session parameters
+    except Exception as e:
+        logging.error(f"❌ Error displaying booking form: {str(e)}")
+        return f"Unable to display booking form. Please contact us directly. Error: {str(e)}", 500
+
+
+@app.route('/submit-booking-form', methods=['POST'])
+def submit_booking_form():
+    """
+    Handle booking form submission and create Stripe checkout session
+    Accepts form data with booking details and customer information
+    """
+    try:
+        if not STRIPE_SECRET_KEY:
+            return jsonify({'success': False, 'error': 'Stripe payment system is not configured'}), 500
+
+        # Get form data
+        booking_id = request.form.get('booking_id')
+        date = request.form.get('date')
+        tee_time = request.form.get('tee_time')
+        players = request.form.get('players')
+        total = request.form.get('total')
+        guest_email = request.form.get('guest_email')
+
+        # Get booking form fields
+        lead_name = request.form.get('lead_name')
+        caddie_requirements = request.form.get('caddie_requirements', '')
+        fb_requirements = request.form.get('fb_requirements', '')
+        special_requests = request.form.get('special_requests', '')
+
+        if not all([booking_id, date, tee_time, players, guest_email, lead_name]):
+            return jsonify({'success': False, 'error': 'Missing required booking information'}), 400
+
+        # Convert to appropriate types
+        players = int(players)
+        total = float(total)
+
+        # Create description with all booking details
+        description_lines = [
+            f'Date: {date}, Tee Time: {tee_time}',
+            f'Players: {players}',
+            f'Lead Guest: {lead_name}'
+        ]
+
+        if caddie_requirements:
+            description_lines.append(f'Caddies: {caddie_requirements}')
+
+        description = '\n'.join(description_lines)
+
+        # Common session parameters with extended metadata
         session_params = {
             'line_items': [{
                 'price_data': {
                     'currency': 'eur',
                     'product_data': {
                         'name': f'Golf Booking - {FROM_NAME}',
-                        'description': f'Date: {date}, Tee Time: {tee_time}\nPlayers: {players}',
+                        'description': description,
                         'images': ['https://theisland.ie/wp-content/uploads/2024/01/island-logo.png'],
                     },
                     'unit_amount': int(total * 100),  # Convert to cents
@@ -2944,6 +2998,10 @@ def book_redirect():
                 'tee_time': tee_time,
                 'players': str(players),
                 'club': DATABASE_CLUB_ID,
+                'lead_name': lead_name,
+                'caddie_requirements': caddie_requirements[:500] if caddie_requirements else '',  # Stripe metadata limit
+                'fb_requirements': fb_requirements[:500] if fb_requirements else '',
+                'special_requests': special_requests[:500] if special_requests else '',
             },
             'payment_intent_data': {
                 'metadata': {
@@ -2951,6 +3009,10 @@ def book_redirect():
                     'date': date,
                     'tee_time': tee_time,
                     'players': str(players),
+                    'lead_name': lead_name,
+                    'caddie_requirements': caddie_requirements[:500] if caddie_requirements else '',
+                    'fb_requirements': fb_requirements[:500] if fb_requirements else '',
+                    'special_requests': special_requests[:500] if special_requests else '',
                 }
             }
         }
@@ -2964,7 +3026,7 @@ def book_redirect():
         ]
 
         session = None
-        for payment_methods, description in payment_method_attempts:
+        for payment_methods, description_text in payment_method_attempts:
             try:
                 session = stripe.checkout.Session.create(
                     payment_method_types=payment_methods,
@@ -2977,10 +3039,10 @@ def book_redirect():
                         disabled.append('SEPA')
                     if 'bacs_debit' not in payment_methods:
                         disabled.append('BACS')
-                    logging.warning(f"⚠️ Using {description} ({', '.join(disabled)} not enabled)")
+                    logging.warning(f"⚠️ Using {description_text} ({', '.join(disabled)} not enabled)")
                     logging.warning(f"   Enable at: https://dashboard.stripe.com/account/payments/settings")
                 else:
-                    logging.info(f"✅ Using {description}")
+                    logging.info(f"✅ Using {description_text}")
                 break
             except stripe.error.InvalidRequestError as e:
                 # This payment method combination didn't work, try next
@@ -2999,13 +3061,18 @@ def book_redirect():
             raise Exception("Failed to create Stripe checkout session with any payment method combination")
 
         logging.info(f"✅ Created Stripe checkout session for booking {booking_id}: {session.id}")
+        logging.info(f"   Lead: {lead_name}, Caddies: {caddie_requirements or 'None'}")
 
-        # Redirect to Stripe checkout
-        return redirect(session.url, code=303)
+        # Return success with checkout URL
+        return jsonify({
+            'success': True,
+            'checkout_url': session.url,
+            'session_id': session.id
+        })
 
     except Exception as e:
-        logging.error(f"❌ Error creating Stripe checkout: {str(e)}")
-        return f"Unable to process payment. Please contact us directly. Error: {str(e)}", 500
+        logging.error(f"❌ Error creating Stripe checkout from booking form: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/webhook/stripe', methods=['POST'])
@@ -3042,6 +3109,12 @@ def stripe_webhook():
             amount_paid = session['amount_total'] / 100  # Convert from cents
             payment_method_types = session.get('payment_method_types', [])
 
+            # Extract booking form data from metadata
+            lead_name = session['metadata'].get('lead_name', '')
+            caddie_requirements = session['metadata'].get('caddie_requirements', '')
+            fb_requirements = session['metadata'].get('fb_requirements', '')
+            special_requests = session['metadata'].get('special_requests', '')
+
             logging.info(f"💳 Payment checkout completed for booking {booking_id}")
             logging.info(f"   Amount: €{amount_paid}")
             logging.info(f"   Customer: {guest_email}")
@@ -3061,6 +3134,10 @@ def stripe_webhook():
                     update_data = {
                         'status': 'Confirmed',
                         'tee_time': tee_time,
+                        'lead_name': lead_name,
+                        'caddie_requirements': caddie_requirements,
+                        'fb_requirements': fb_requirements,
+                        'special_requests': special_requests,
                         'note': f"Payment confirmed via Stripe ({payment_type} Direct Debit - TEST MODE) on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Session ID: {session['id']}"
                     }
 
@@ -3082,6 +3159,10 @@ def stripe_webhook():
                     update_data = {
                         'status': f'Pending {payment_type}',
                         'tee_time': tee_time,
+                        'lead_name': lead_name,
+                        'caddie_requirements': caddie_requirements,
+                        'fb_requirements': fb_requirements,
+                        'special_requests': special_requests,
                         'note': f"{payment_type} Direct Debit payment initiated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount: €{amount_paid}\nStatus: Pending (clears in 3-5 business days)\nStripe Session ID: {session['id']}"
                     }
 
@@ -3103,6 +3184,10 @@ def stripe_webhook():
                 update_data = {
                     'status': 'Confirmed',
                     'tee_time': tee_time,  # Save the tee time to database
+                    'lead_name': lead_name,
+                    'caddie_requirements': caddie_requirements,
+                    'fb_requirements': fb_requirements,
+                    'special_requests': special_requests,
                     'note': f"Payment confirmed via Stripe (Card) on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Session ID: {session['id']}"
                 }
 
@@ -3143,15 +3228,25 @@ def stripe_webhook():
                         players = payment_intent.metadata.get('players')
                         amount_paid = charge['amount'] / 100
 
+                        # Extract booking form data from payment intent metadata
+                        lead_name = payment_intent.metadata.get('lead_name', '')
+                        caddie_requirements = payment_intent.metadata.get('caddie_requirements', '')
+                        fb_requirements = payment_intent.metadata.get('fb_requirements', '')
+                        special_requests = payment_intent.metadata.get('special_requests', '')
+
                         if booking_id:
                             logging.info(f"✅ {payment_type} Direct Debit payment cleared for booking {booking_id}")
 
                             # Get customer email from charge
                             receipt_email = charge.get('receipt_email') or charge.get('billing_details', {}).get('email')
 
-                            # Update booking to "Confirmed" status
+                            # Update booking to "Confirmed" status with booking form data
                             update_data = {
                                 'status': 'Confirmed',
+                                'lead_name': lead_name,
+                                'caddie_requirements': caddie_requirements,
+                                'fb_requirements': fb_requirements,
+                                'special_requests': special_requests,
                                 'note': f"{payment_type} Direct Debit payment cleared on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Charge ID: {charge['id']}"
                             }
 
