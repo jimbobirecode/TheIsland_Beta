@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Your Booking - {{ club_name }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #2d3748;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: #718096;
+            font-size: 16px;
+        }
+
+        .booking-summary {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-left: 4px solid #667eea;
+        }
+
+        .booking-summary h2 {
+            color: #2d3748;
+            font-size: 18px;
+            margin-bottom: 12px;
+        }
+
+        .booking-detail {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            color: #4a5568;
+        }
+
+        .booking-detail strong {
+            color: #2d3748;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            color: #2d3748;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .required {
+            color: #e53e3e;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="number"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+            font-family: inherit;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .help-text {
+            font-size: 13px;
+            color: #718096;
+            margin-top: 4px;
+        }
+
+        .submit-button {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+
+        .submit-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .submit-button:active {
+            transform: translateY(0);
+        }
+
+        .total-display {
+            background: #f7fafc;
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .total-display .amount {
+            font-size: 32px;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .total-display .label {
+            color: #718096;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .error-message {
+            background: #fff5f5;
+            color: #c53030;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #fc8181;
+            display: none;
+        }
+
+        .spinner {
+            display: none;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .button-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                padding: 24px;
+            }
+
+            .header h1 {
+                font-size: 24px;
+            }
+
+            .total-display .amount {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Complete Your Booking</h1>
+            <p>Please provide your details to finalize your reservation</p>
+        </div>
+
+        <div class="booking-summary">
+            <h2>Booking Summary</h2>
+            <div class="booking-detail">
+                <span>Booking ID:</span>
+                <strong>{{ booking_id }}</strong>
+            </div>
+            <div class="booking-detail">
+                <span>Date:</span>
+                <strong>{{ date }}</strong>
+            </div>
+            <div class="booking-detail">
+                <span>Tee Time:</span>
+                <strong>{{ tee_time }}</strong>
+            </div>
+            <div class="booking-detail">
+                <span>Players:</span>
+                <strong>{{ players }}</strong>
+            </div>
+        </div>
+
+        <div class="total-display">
+            <div class="label">Total Amount</div>
+            <div class="amount">€{{ "%.2f"|format(total) }}</div>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+
+        <form id="bookingForm" method="POST" action="/submit-booking-form">
+            <input type="hidden" name="booking_id" value="{{ booking_id }}">
+            <input type="hidden" name="date" value="{{ date }}">
+            <input type="hidden" name="tee_time" value="{{ tee_time }}">
+            <input type="hidden" name="players" value="{{ players }}">
+            <input type="hidden" name="total" value="{{ total }}">
+            <input type="hidden" name="guest_email" value="{{ guest_email }}">
+
+            <div class="form-group">
+                <label for="lead_name">Lead Guest Name <span class="required">*</span></label>
+                <input type="text" id="lead_name" name="lead_name" required placeholder="Enter the lead guest's full name">
+                <div class="help-text">This will be the primary contact for the booking</div>
+            </div>
+
+            <div class="form-group">
+                <label for="caddie_requirements">Caddie Requirements</label>
+                <select id="caddie_requirements" name="caddie_requirements">
+                    <option value="">Select caddie preference</option>
+                    <option value="No caddies required">No caddies required</option>
+                    <option value="1 caddie">1 caddie</option>
+                    <option value="2 caddies">2 caddies</option>
+                    <option value="3 caddies">3 caddies</option>
+                    <option value="4 caddies">4 caddies (1 per player)</option>
+                    <option value="Forecaddie">Forecaddie</option>
+                    <option value="Please contact me">Please contact me to discuss</option>
+                </select>
+                <div class="help-text">Let us know your caddie preferences</div>
+            </div>
+
+            <div class="form-group">
+                <label for="fb_requirements">Food & Beverage Requirements</label>
+                <textarea id="fb_requirements" name="fb_requirements" placeholder="e.g., Lunch for 4, dietary restrictions, beverage preferences, etc."></textarea>
+                <div class="help-text">Any dietary requirements, meal preferences, or special requests</div>
+            </div>
+
+            <div class="form-group">
+                <label for="special_requests">Special Requests</label>
+                <textarea id="special_requests" name="special_requests" placeholder="Any other special requests or information we should know"></textarea>
+                <div class="help-text">Celebration occasions, accessibility needs, equipment rental, etc.</div>
+            </div>
+
+            <button type="submit" class="submit-button" id="submitButton">
+                <div class="button-content">
+                    <span id="buttonText">Book and Pay</span>
+                    <div class="spinner" id="spinner"></div>
+                </div>
+            </button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('bookingForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const submitButton = document.getElementById('submitButton');
+            const buttonText = document.getElementById('buttonText');
+            const spinner = document.getElementById('spinner');
+            const errorMessage = document.getElementById('errorMessage');
+
+            // Disable button and show loading state
+            submitButton.disabled = true;
+            buttonText.textContent = 'Processing...';
+            spinner.style.display = 'block';
+            errorMessage.style.display = 'none';
+
+            // Submit form
+            fetch('/submit-booking-form', {
+                method: 'POST',
+                body: new FormData(this)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.checkout_url) {
+                    // Redirect to Stripe checkout
+                    window.location.href = data.checkout_url;
+                } else {
+                    throw new Error(data.error || 'Failed to create checkout session');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                errorMessage.textContent = 'An error occurred: ' + error.message;
+                errorMessage.style.display = 'block';
+
+                // Re-enable button
+                submitButton.disabled = false;
+                buttonText.textContent = 'Book and Pay';
+                spinner.style.display = 'none';
+            });
+        });
+    </script>
+</body>
+</html>

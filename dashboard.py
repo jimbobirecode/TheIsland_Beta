@@ -823,7 +823,8 @@ def load_bookings_from_db(club_filter):
                 status, note, club, timestamp, customer_confirmed_at,
                 updated_at, updated_by, created_at,
                 hotel_required, hotel_checkin, hotel_checkout,
-                golf_courses, selected_tee_times
+                golf_courses, selected_tee_times,
+                lead_name, caddie_requirements, fb_requirements, special_requests
             FROM bookings
             WHERE club = %s
             ORDER BY timestamp DESC
@@ -1816,15 +1817,31 @@ if page == "Bookings":
             golf_courses = booking.get('golf_courses', '')
             selected_tee_times = booking.get('selected_tee_times', '')
             golf_info_html = ""
-    
+
             if golf_courses and not pd.isna(golf_courses) and str(golf_courses).strip():
                 courses_list = str(golf_courses).strip()
                 times_list = str(selected_tee_times).strip() if selected_tee_times and not pd.isna(selected_tee_times) else "Times not specified"
-    
+
                 golf_info_html = f"<div style='background: #10b981; padding: 1rem; border-radius: 8px; margin-top: 1rem;'><div style='color: #ffffff; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.75rem;'>Golf Courses & Tee Times</div><div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;'><div><div style='color: rgba(255,255,255,0.8); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;'>Courses</div><div style='color: #ffffff; font-size: 0.875rem; font-weight: 600; line-height: 1.5;'>{html.escape(courses_list)}</div></div><div><div style='color: rgba(255,255,255,0.8); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;'>Tee Times</div><div style='color: #ffffff; font-size: 0.875rem; font-weight: 600; line-height: 1.5;'>{html.escape(times_list)}</div></div></div></div>"
+
+            # Booking form information section
+            lead_name = booking.get('lead_name', '')
+            caddie_requirements = booking.get('caddie_requirements', '')
+            fb_requirements = booking.get('fb_requirements', '')
+            special_requests = booking.get('special_requests', '')
+            booking_form_html = ""
+
+            # Show booking form info if any field is filled
+            if any([lead_name, caddie_requirements, fb_requirements, special_requests]):
+                lead_display = html.escape(str(lead_name)) if lead_name and not pd.isna(lead_name) else "Not specified"
+                caddie_display = html.escape(str(caddie_requirements)) if caddie_requirements and not pd.isna(caddie_requirements) else "Not specified"
+                fb_display = html.escape(str(fb_requirements)) if fb_requirements and not pd.isna(fb_requirements) else "Not specified"
+                special_display = html.escape(str(special_requests)) if special_requests and not pd.isna(special_requests) else "Not specified"
+
+                booking_form_html = f"<div style='background: #8b5cf6; padding: 1rem; border-radius: 8px; margin-top: 1rem;'><div style='color: #ffffff; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.75rem;'>Booking Details</div><div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;'><div><div style='color: rgba(255,255,255,0.8); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;'>Lead Guest</div><div style='color: #ffffff; font-size: 0.875rem; font-weight: 600;'>{lead_display}</div></div><div><div style='color: rgba(255,255,255,0.8); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;'>Caddie Requirements</div><div style='color: #ffffff; font-size: 0.875rem; font-weight: 600;'>{caddie_display}</div></div><div><div style='color: rgba(255,255,255,0.8); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;'>F&B Requirements</div><div style='color: #ffffff; font-size: 0.875rem; font-weight: 600; line-height: 1.5;'>{fb_display}</div></div><div><div style='color: rgba(255,255,255,0.8); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;'>Special Requests</div><div style='color: #ffffff; font-size: 0.875rem; font-weight: 600; line-height: 1.5;'>{special_display}</div></div></div></div>"
     
             # Build complete card HTML including progress bar and details
-            card_html = f"<div class='booking-card' style='background: linear-gradient(135deg, #059669 0%, #1e293b 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; margin-bottom: 0.5rem; box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3); transition: all 0.3s ease;'><div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem;'><div style='flex: 1;'><div style='display: flex; align-items: center;'><div class='booking-id' style='margin-bottom: 0.5rem;'>{html.escape(str(booking['booking_id']))}</div>{hotel_badge}</div><div class='booking-email'>{html.escape(str(booking['guest_email']))}</div></div><div style='text-align: right;'><div class='timestamp'>REQUESTED</div><div class='timestamp-value'>{requested_time}</div></div></div><div style='margin-bottom: 1.5rem;'>{progress_html}</div><div style='height: 1px; background: linear-gradient(90deg, transparent, #3b82f6, transparent); margin: 1.5rem 0;'></div><div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 1rem;'><div><div class='data-label' style='margin-bottom: 0.5rem;'>TEE DATE</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{booking['date'].strftime('%b %d, %Y')}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>TEE TIME</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{tee_time_display}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>PLAYERS</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{booking['players']}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>TOTAL</div><div style='font-size: 1.5rem; font-weight: 700; color: #10b981;'>€{booking['total']:,.2f}</div></div></div>{golf_info_html}{hotel_dates_html}</div>"
+            card_html = f"<div class='booking-card' style='background: linear-gradient(135deg, #059669 0%, #1e293b 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 1.5rem; margin-bottom: 0.5rem; box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3); transition: all 0.3s ease;'><div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem;'><div style='flex: 1;'><div style='display: flex; align-items: center;'><div class='booking-id' style='margin-bottom: 0.5rem;'>{html.escape(str(booking['booking_id']))}</div>{hotel_badge}</div><div class='booking-email'>{html.escape(str(booking['guest_email']))}</div></div><div style='text-align: right;'><div class='timestamp'>REQUESTED</div><div class='timestamp-value'>{requested_time}</div></div></div><div style='margin-bottom: 1.5rem;'>{progress_html}</div><div style='height: 1px; background: linear-gradient(90deg, transparent, #3b82f6, transparent); margin: 1.5rem 0;'></div><div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 1rem;'><div><div class='data-label' style='margin-bottom: 0.5rem;'>TEE DATE</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{booking['date'].strftime('%b %d, %Y')}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>TEE TIME</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{tee_time_display}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>PLAYERS</div><div style='font-size: 1rem; font-weight: 600; color: #f9fafb;'>{booking['players']}</div></div><div><div class='data-label' style='margin-bottom: 0.5rem;'>TOTAL</div><div style='font-size: 1.5rem; font-weight: 700; color: #10b981;'>€{booking['total']:,.2f}</div></div></div>{booking_form_html}{golf_info_html}{hotel_dates_html}</div>"
     
             # Render the complete card
             st.markdown(card_html, unsafe_allow_html=True)
