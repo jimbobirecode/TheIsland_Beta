@@ -93,6 +93,8 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 # Success/Cancel URLs now point to app endpoints (can be overridden via env vars)
 BOOKING_APP_URL = os.getenv("BOOKING_APP_URL", "https://theisland-email-bot.onrender.com")
+# Optional: Separate domain for booking form (defaults to BOOKING_APP_URL if not set)
+BOOKING_FORM_URL = os.getenv("BOOKING_FORM_URL", BOOKING_APP_URL)
 STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", f"{BOOKING_APP_URL}/booking-success")
 STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", f"{BOOKING_APP_URL}/booking-cancelled")
 
@@ -855,7 +857,7 @@ def build_booking_link(date: str, time: str, players: int, guest_email: str, boo
 
         # URL encode parameters
         query_string = '&'.join([f"{k}={quote(str(v))}" for k, v in params.items()])
-        return f"{BOOKING_APP_URL}/book?{query_string}"
+        return f"{BOOKING_FORM_URL}/book?{query_string}"
     else:
         # Fallback to mailto link if Stripe not configured
         tracking_email = f"{TRACKING_EMAIL_PREFIX}@bookings.teemail.io"
