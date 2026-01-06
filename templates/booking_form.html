@@ -244,12 +244,13 @@
 
         <div class="error-message" id="errorMessage"></div>
 
-        <form id="bookingForm" method="POST" action="/submit-booking-form">
+        <form id="bookingForm" method="POST" action="{% if club_id %}/{{ club_id }}{% endif %}/submit-booking-form">
             <input type="hidden" name="booking_id" value="{{ booking_id }}">
             <input type="hidden" name="date" value="{{ date }}">
             <input type="hidden" name="tee_time" value="{{ tee_time }}">
             <input type="hidden" name="players" value="{{ players }}">
             <input type="hidden" name="total" value="{{ total }}">
+            <input type="hidden" name="club_id" value="{{ club_id }}">
             <input type="hidden" name="guest_email" value="{{ guest_email }}">
 
             <div class="form-group">
@@ -309,8 +310,8 @@
             spinner.style.display = 'block';
             errorMessage.style.display = 'none';
 
-            // Submit form
-            fetch('/submit-booking-form', {
+            // Submit form - use the form's action URL
+            fetch(this.action, {
                 method: 'POST',
                 body: new FormData(this)
             })

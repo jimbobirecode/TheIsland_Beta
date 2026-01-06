@@ -838,12 +838,15 @@ def create_book_button(booking_link: str, button_text: str = "Reserve Now") -> s
     """
 
 
-def build_booking_link(date: str, time: str, players: int, guest_email: str, booking_id: str = None) -> str:
+def build_booking_link(date: str, time: str, players: int, guest_email: str, booking_id: str = None, club: str = None) -> str:
     """
     Generate booking link for Book Now button
 
-    If Stripe is configured, creates a link to /book endpoint that redirects to Stripe checkout
+    If Stripe is configured, creates a link to /<club>/book endpoint that redirects to Stripe checkout
     Otherwise, falls back to mailto link
+
+    Parameters:
+    - club: Club identifier (e.g., 'theisland', 'lahinch') - creates URL like /theisland/book
     """
     if STRIPE_SECRET_KEY:
         # Build Stripe checkout link
@@ -857,7 +860,10 @@ def build_booking_link(date: str, time: str, players: int, guest_email: str, boo
 
         # URL encode parameters
         query_string = '&'.join([f"{k}={quote(str(v))}" for k, v in params.items()])
-        return f"{BOOKING_FORM_URL}/book?{query_string}"
+
+        # Use club-specific URL if club is provided
+        club_path = f"/{club}" if club else ""
+        return f"{BOOKING_FORM_URL}{club_path}/book?{query_string}"
     else:
         # Fallback to mailto link if Stripe not configured
         tracking_email = f"{TRACKING_EMAIL_PREFIX}@bookings.teemail.io"
@@ -887,8 +893,13 @@ def build_booking_link(date: str, time: str, players: int, guest_email: str, boo
         return mailto_link
 
 
-def format_inquiry_email(results: list, player_count: int, guest_email: str, booking_id: str = None) -> str:
-    """Generate inquiry email with available tee times"""
+def format_inquiry_email(results: list, player_count: int, guest_email: str, booking_id: str = None, club: str = None) -> str:
+    """
+    Generate inquiry email with available tee times
+
+    Parameters:
+    - club: Club identifier (e.g., 'theisland') for generating club-specific booking URLs
+    """
     html = get_email_header()
 
     html += f"""
@@ -934,7 +945,7 @@ def format_inquiry_email(results: list, player_count: int, guest_email: str, boo
 
         for result in date_results:
             time = result["time"]
-            booking_link = build_booking_link(date, time, player_count, guest_email, booking_id)
+            booking_link = build_booking_link(date, time, player_count, guest_email, booking_id, club)
             button_html = create_book_button(booking_link, "Book Now")
 
             html += f"""
@@ -1609,7 +1620,7 @@ def process_inquiry_async(sender_email: str, parsed: Dict, booking_id: str, date
                     if results:
                         # Send inquiry email with available times
                         logging.info(f"   ✅ Found {len(results)} available times - SENDING EMAIL")
-                        html_email = format_inquiry_email(results, players, sender_email, booking_id)
+                        html_email = format_inquiry_email(results, players, sender_email, booking_id, DATABASE_CLUB_ID)
                         subject_line = "Available Tee Times at Golf Club"
                         logging.info(f"   📧 Sending email to: {sender_email}")
                         logging.info(f"      Subject: {subject_line}")
@@ -2887,13 +2898,16 @@ def create_checkout_session():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/book', methods=['GET'])
-def book_redirect():
+@app.route('/<club>/book', methods=['GET'])
+@app.route('/book', methods=['GET'])  # Backward compatibility
+def book_redirect(club=None):
     """
     Display booking form for customer to fill out details
     Accepts GET parameters from email Book Now buttons
+    Now supports club-specific URLs: /<club>/book
 
     Parameters:
+    - club: Club identifier (from URL path, e.g., 'theisland', 'lahinch')
     - booking_id: ISL-20251209-8C9409B7
     - date: 2025-12-15
     - time: 10:30
@@ -2911,6 +2925,9 @@ def book_redirect():
         players = request.args.get('players')
         guest_email = request.args.get('email')
 
+        # Use club from URL path, or fall back to DATABASE_CLUB_ID
+        club_id = club or DATABASE_CLUB_ID
+
         if not all([booking_id, date, tee_time, players, guest_email]):
             return "Missing required booking information. Please contact us directly.", 400
 
@@ -2926,6 +2943,7 @@ def book_redirect():
                              players=players,
                              guest_email=guest_email,
                              total=total,
+                             club_id=club_id,
                              club_name=FROM_NAME)
 
     except Exception as e:
@@ -2933,11 +2951,13 @@ def book_redirect():
         return f"Unable to display booking form. Please contact us directly. Error: {str(e)}", 500
 
 
-@app.route('/submit-booking-form', methods=['POST'])
-def submit_booking_form():
+@app.route('/<club>/submit-booking-form', methods=['POST'])
+@app.route('/submit-booking-form', methods=['POST'])  # Backward compatibility
+def submit_booking_form(club=None):
     """
     Handle booking form submission and create Stripe checkout session
     Accepts form data with booking details and customer information
+    Now supports club-specific URLs: /<club>/submit-booking-form
     """
     try:
         if not STRIPE_SECRET_KEY:
@@ -2950,6 +2970,9 @@ def submit_booking_form():
         players = request.form.get('players')
         total = request.form.get('total')
         guest_email = request.form.get('guest_email')
+
+        # Get club from form or URL path
+        club_id = request.form.get('club_id') or club or DATABASE_CLUB_ID
 
         # Get booking form fields
         lead_name = request.form.get('lead_name')
@@ -2999,7 +3022,7 @@ def submit_booking_form():
                 'date': date,
                 'tee_time': tee_time,
                 'players': str(players),
-                'club': DATABASE_CLUB_ID,
+                'club': club_id,
                 'lead_name': lead_name,
                 'caddie_requirements': caddie_requirements[:500] if caddie_requirements else '',  # Stripe metadata limit
                 'fb_requirements': fb_requirements[:500] if fb_requirements else '',
