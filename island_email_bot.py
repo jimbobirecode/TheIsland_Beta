@@ -347,7 +347,8 @@ def update_booking_in_db(booking_id: str, updates: dict):
         # Build update query
         for key, value in updates.items():
             if key in ['status', 'note', 'players', 'total', 'customer_confirmed_at',
-                      'confirmation_message_id', 'date', 'tee_time']:
+                      'confirmation_message_id', 'date', 'tee_time', 'lead_name',
+                      'caddie_requirements', 'fb_requirements', 'special_requests', 'content']:
                 set_clauses.append(f"{key} = %({key})s")
                 params[key] = value
 
@@ -2979,6 +2980,7 @@ def submit_booking_form(club=None):
         caddie_requirements = request.form.get('caddie_requirements', '')
         fb_requirements = request.form.get('fb_requirements', '')
         special_requests = request.form.get('special_requests', '')
+        content = request.form.get('content', '')
 
         if not all([booking_id, date, tee_time, players, guest_email, lead_name]):
             return jsonify({'success': False, 'error': 'Missing required booking information'}), 400
@@ -3027,6 +3029,7 @@ def submit_booking_form(club=None):
                 'caddie_requirements': caddie_requirements[:500] if caddie_requirements else '',  # Stripe metadata limit
                 'fb_requirements': fb_requirements[:500] if fb_requirements else '',
                 'special_requests': special_requests[:500] if special_requests else '',
+                'content': content[:500] if content else '',
             },
             'payment_intent_data': {
                 'metadata': {
@@ -3038,6 +3041,7 @@ def submit_booking_form(club=None):
                     'caddie_requirements': caddie_requirements[:500] if caddie_requirements else '',
                     'fb_requirements': fb_requirements[:500] if fb_requirements else '',
                     'special_requests': special_requests[:500] if special_requests else '',
+                    'content': content[:500] if content else '',
                 }
             }
         }
@@ -3139,6 +3143,7 @@ def stripe_webhook():
             caddie_requirements = session['metadata'].get('caddie_requirements', '')
             fb_requirements = session['metadata'].get('fb_requirements', '')
             special_requests = session['metadata'].get('special_requests', '')
+            content = session['metadata'].get('content', '')
 
             logging.info(f"💳 Payment checkout completed for booking {booking_id}")
             logging.info(f"   Amount: €{amount_paid}")
@@ -3163,6 +3168,7 @@ def stripe_webhook():
                         'caddie_requirements': caddie_requirements,
                         'fb_requirements': fb_requirements,
                         'special_requests': special_requests,
+                        'content': content,
                         'note': f"Payment confirmed via Stripe ({payment_type} Direct Debit - TEST MODE) on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Session ID: {session['id']}"
                     }
 
@@ -3188,6 +3194,7 @@ def stripe_webhook():
                         'caddie_requirements': caddie_requirements,
                         'fb_requirements': fb_requirements,
                         'special_requests': special_requests,
+                        'content': content,
                         'note': f"{payment_type} Direct Debit payment initiated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount: €{amount_paid}\nStatus: Pending (clears in 3-5 business days)\nStripe Session ID: {session['id']}"
                     }
 
@@ -3213,6 +3220,7 @@ def stripe_webhook():
                     'caddie_requirements': caddie_requirements,
                     'fb_requirements': fb_requirements,
                     'special_requests': special_requests,
+                    'content': content,
                     'note': f"Payment confirmed via Stripe (Card) on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Session ID: {session['id']}"
                 }
 
@@ -3258,6 +3266,7 @@ def stripe_webhook():
                         caddie_requirements = payment_intent.metadata.get('caddie_requirements', '')
                         fb_requirements = payment_intent.metadata.get('fb_requirements', '')
                         special_requests = payment_intent.metadata.get('special_requests', '')
+                        content = payment_intent.metadata.get('content', '')
 
                         if booking_id:
                             logging.info(f"✅ {payment_type} Direct Debit payment cleared for booking {booking_id}")
@@ -3272,6 +3281,7 @@ def stripe_webhook():
                                 'caddie_requirements': caddie_requirements,
                                 'fb_requirements': fb_requirements,
                                 'special_requests': special_requests,
+                                'content': content,
                                 'note': f"{payment_type} Direct Debit payment cleared on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nAmount paid: €{amount_paid}\nStripe Charge ID: {charge['id']}"
                             }
 
