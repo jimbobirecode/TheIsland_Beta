@@ -1319,6 +1319,38 @@ def is_waitlist_optin_email(subject: str) -> bool:
     return "JOIN WAITLIST" in subject_upper
 
 
+def expand_date_range(start_date: str, end_date: str, max_days: int = 14) -> list:
+    """
+    Expand a start/end date pair into every date in between.
+
+    A group asking for "10th-13th October" wants availability checked on all
+    four days, not just the first and last.
+    """
+    if not start_date:
+        return []
+
+    if not end_date or end_date == start_date:
+        return [start_date]
+
+    try:
+        start = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end = datetime.strptime(end_date, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        logging.warning(f"⚠️  Could not expand date range {start_date} - {end_date}")
+        return [d for d in [start_date, end_date] if d]
+
+    if end < start:
+        start, end = end, start
+
+    span = (end - start).days + 1
+    if span > max_days:
+        logging.info(f"📅 Date range {start_date} - {end_date} spans {span} days, "
+                     f"limiting to first {max_days}")
+        span = max_days
+
+    return [(start + timedelta(days=offset)).strftime('%Y-%m-%d') for offset in range(span)]
+
+
 def parse_booking_email_with_claude(body: str, subject: str, from_email: str = "", from_name: str = ""):
     """
     Parse booking email with Claude API as primary parser, fallback to NLP parser
@@ -1342,12 +1374,10 @@ def parse_booking_email_with_claude(body: str, subject: str, from_email: str = "
                 time_pref = claude_result.get('time_preference', {})
                 special_req = claude_result.get('special_requests', {})
 
-                # Build dates list
-                booking_dates = []
-                if dates_data.get('start_date'):
-                    booking_dates.append(dates_data['start_date'])
-                if dates_data.get('end_date') and dates_data.get('end_date') != dates_data.get('start_date'):
-                    booking_dates.append(dates_data['end_date'])
+                # Build dates list - every date in the requested range, so
+                # availability is checked on all of them
+                booking_dates = expand_date_range(dates_data.get('start_date'),
+                                                  dates_data.get('end_date'))
 
                 # Map intent
                 intent_map = {

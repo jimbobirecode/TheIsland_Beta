@@ -155,28 +155,41 @@ class BookingEntity:
 class EnhancedEmailParser:
     """Comprehensive email parser for golf bookings and lodging"""
 
+    # Reusable building blocks for the date patterns below
+    # \b before the optional '.' keeps a partial month ('20th apri' out of
+    # '20th april 2027') from matching
+    MONTH = r'(?:jan|feb|mar|apr|may|jun|jul|aug|sept|sep|oct|nov|dec)[a-z]*\b\.?'
+    WEEKDAY = r'(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)(?:day)?'
+    WEEKDAY_FULL = r'(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)'
+
     # Extensive date pattern regexes
     DATE_PATTERNS = [
         # ISO formats (most specific)
         r'(?:on|for|date[:\s]*)\s*(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})',
         r'(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})',
 
-        # Month name formats
-        r'(?:on|for|date[:\s]*)\s*(\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{2,4})',
-        r'(?:on|for|date[:\s]*)\s*((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?\s*,?\s*\d{2,4})',
-        r'(\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{2,4})',
-        r'((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?\s*,?\s*\d{2,4})',
+        # Month name formats WITH a year ("20th April 2027", "April 20th, 2027")
+        rf'(?<!\d)(\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?{MONTH}\s*,?\s*\d{{4}})(?!\d)',
+        rf'(?<!\d)({MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?\s*,?\s*\d{{4}})(?!\d)',
+
+        # Month name formats WITHOUT a year ("10th October", "Oct 10", "10 of October")
+        # The trailing lookahead stops these from matching part of a dated or
+        # ranged reference (e.g. "20th April 2027" or "October 10-12"), which
+        # the patterns above and the range extractor already handle.
+        rf'(?<!\d)(\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?{MONTH})(?!\s*,?\s*\d)',
+        rf'(?<!\d)({MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?)(?!\s*(?:,?\s*\d|[-\u2013\u2014]))',
 
         # Relative dates
-        r'(?:on|for|date[:\s]*)\s*(next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))',
-        r'(?:on|for|date[:\s]*)\s*(this\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))',
+        rf'\b((?:next|this|coming)\s+{WEEKDAY})\b',
+        rf'(?:on|for)\s+({WEEKDAY})\b',
+        rf'\b({WEEKDAY_FULL})\b',
         r'\b(this\s+(?:morning|afternoon|evening))\b',  # "this afternoon"
         r'\b(today)\b',
         r'\b(tomorrow)\b',
-        r'(?:on|for|date[:\s]*)\s*(tomorrow)',
-        r'(?:on|for|date[:\s]*)\s*(day\s+after\s+tomorrow)',
-        r'(?:on|for|date[:\s]*)\s*(next\s+week)',
-        r'(?:on|for|date[:\s]*)\s*(next\s+month)',
+        r'\b(day\s+after\s+tomorrow)\b',
+        r'\b((?:this|next|the\s+following)\s+weekend)\b',
+        r'\b(next\s+week)\b',
+        r'\b(next\s+month)\b',
         r'(in\s+\d+\s+days?)',
         r'(in\s+\d+\s+weeks?)',
         r'(in\s+\d+\s+months?)',
@@ -186,13 +199,17 @@ class EnhancedEmailParser:
         r'(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
 
         # Natural language
-        r'(first\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+in\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)',
-        r'(last\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+in\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)',
-        r'(mid\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)',
-        r'(early\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)',
-        r'(late\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)',
-        r'(end\s+of\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)',
-        r'(beginning\s+of\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)',
+        rf'(first\s+{WEEKDAY_FULL}\s+in\s+{MONTH})',
+        rf'(last\s+{WEEKDAY_FULL}\s+in\s+{MONTH})',
+    ]
+
+    # Vague references to part of a month. These are only used when no explicit
+    # date was found - an email that names a date window and then mentions
+    # "early September" in passing should keep the window.
+    VAGUE_DATE_PATTERNS = [
+        rf'((?:mid|middle)\s+(?:of\s+)?{MONTH})',
+        rf'((?:early|beginning|start)\s+(?:of\s+)?{MONTH})',
+        rf'((?:late|end)\s+(?:of\s+)?{MONTH})',
     ]
 
     # Extensive time pattern regexes
@@ -335,6 +352,12 @@ class EnhancedEmailParser:
             matches = re.finditer(pattern, text_lower, re.IGNORECASE)
             for match in matches:
                 date_str = match.group(1) if match.groups() else match.group(0)
+
+                # "Saturday 10th October" is one date, not two - the weekday only
+                # names the day of an explicit date next to it
+                if self._is_weekday_qualifier(text_lower, match, date_str):
+                    continue
+
                 entity.raw_dates.append(date_str)
 
                 # Try to parse the date
@@ -345,6 +368,16 @@ class EnhancedEmailParser:
         # Method 2: Look for date ranges FIRST (highest priority)
         date_ranges = self._extract_date_ranges(text_lower)
         dates_found.update(date_ranges)
+
+        # Method 2b: Vague month references - only when nothing explicit was found
+        if not dates_found:
+            for pattern in self.VAGUE_DATE_PATTERNS:
+                for match in re.finditer(pattern, text_lower, re.IGNORECASE):
+                    date_str = match.group(1)
+                    entity.raw_dates.append(date_str)
+                    parsed_date = self._parse_date_flexible(date_str)
+                    if parsed_date:
+                        dates_found.add(parsed_date)
 
         # Method 3: dateparser library (if available) - SELECTIVE USE
         # Only parse sentences that contain date-related keywords to avoid false positives
@@ -404,6 +437,35 @@ class EnhancedEmailParser:
         # Set preferred date (first one found, or most specific)
         if entity.booking_dates:
             entity.preferred_date = entity.booking_dates[0]
+
+    def _is_weekday_qualifier(self, text: str, match, date_str: str) -> bool:
+        """
+        True when a weekday match only labels an explicit date beside it
+        ("Saturday 10th October", "10 Oct (Friday)") rather than being a date
+        of its own.
+        """
+        phrase = date_str.strip().lower()
+        if not re.fullmatch(
+            r'(?:(?:next|this|coming)\s+)?' + self.WEEKDAY, phrase, re.IGNORECASE
+        ):
+            return False
+
+        span_start, span_end = match.span(1) if match.groups() else match.span(0)
+
+        after = re.sub(r'^[\s,.\-()]*(?:the\s+)?', '', text[span_end:span_end + 30])
+        if re.match(r'\d{1,2}(?:st|nd|rd|th)?\b|' + self.MONTH, after, re.IGNORECASE):
+            return True
+
+        before = re.sub(r'[\s,.\-()]*$', '', text[max(0, span_start - 30):span_start])
+        if re.search(
+            r'(?:\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?' + self.MONTH
+            + r'|' + self.MONTH + r'\s+\d{1,2}(?:st|nd|rd|th)?'
+            r'|\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?)$',
+            before, re.IGNORECASE
+        ):
+            return True
+
+        return False
 
     def _extract_times_comprehensive(self, text: str, entity: BookingEntity):
         """Extract all possible tee times"""
@@ -565,20 +627,38 @@ class EnhancedEmailParser:
         # Look for general number patterns - SECOND PRIORITY
         player_patterns = [
             r'(?:group|party)\s*of\s*(\d+)\s*(?:players?|people|persons?|golfers?)',  # "group of 8 golfers"
-            r'(\d+)\s*(?:players?|people|persons?|golfers?|guests?)',
+            r'(\d+)\s*(?:players?|people|persons?|golfers?|guests?|beginners?|novices?|adults?|gents?|ladies|members?|pax)',
             r'(?:party|group)\s*of\s*(\d+)',
+            r'(\d+)\s*(?:tee\s*times?|slots?|spots?)',  # "4 tee times"
+            r'tee\s*times?\s*for\s*(\d+)',  # "tee time for 4"
+            r'(?:booking|reservation|round)\s*for\s*(\d+)',  # "booking for 4"
+            r'(\d+)\s*of\s*us\b',  # "4 of us"
+            r'(?:we\s*are|there\s*(?:are|will\s*be))\s*(\d+)\b',  # "we are 4"
+            # Bare "for 4" - excluding units like "for 2 nights" / "for 10th Oct"
+            r'\bfor\s+(\d+)(?!\s*(?:st|nd|rd|th|:|am|pm|nights?|days?|weeks?|hours?|minutes?|months?|years?|rooms?|holes?|[\d/\-\.]))',
         ]
+
+        month_names = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug',
+                       'sep', 'oct', 'nov', 'dec']
+        month_alternation = '|'.join(month_names)
 
         for pattern in player_patterns:
             matches = re.finditer(pattern, text_lower)
             for match in matches:
-                # Avoid matching dates like "15 April" as "15 players"
-                before = text_lower[max(0, match.start()-20):match.start()]
-                after = text_lower[match.end():match.end()+20]
+                # Avoid reading a date like "15 April" or "April 15" as a player
+                # count. Only a month directly adjacent to the number makes it a
+                # date - a month elsewhere in the sentence does not (e.g.
+                # "on 10th October for 4 players").
+                number_start = match.start(1)
+                number_end = match.end(1)
+                before = text_lower[max(0, number_start - 30):number_start]
+                after = text_lower[number_end:number_end + 30]
 
-                # Check if month names are nearby (avoid date false positives)
-                month_names = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
-                is_date = any(month in before or month in after for month in month_names)
+                is_date = bool(
+                    re.match(r'\s*(?:st|nd|rd|th)?\s*(?:of\s+)?(?:' + month_alternation + r')',
+                             after)
+                    or re.search(r'(?:' + month_alternation + r')[a-z]*\.?\s+$', before)
+                )
 
                 # Also check for "split into X foursomes" which indicates grouping, not total
                 is_grouping = 'split into' in before or 'into' in before
@@ -587,6 +667,26 @@ class EnhancedEmailParser:
                     count = int(match.group(1))
                     if 1 <= count <= 100:
                         return count
+
+        # Numbers written as words ("four players", "a group of four", "four of us")
+        word_numbers = {
+            'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6,
+            'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11,
+            'twelve': 12, 'sixteen': 16, 'twenty': 20,
+        }
+        word_alternation = '|'.join(word_numbers)
+        word_patterns = [
+            r'(?:group|party)\s*of\s*(' + word_alternation + r')\b',
+            r'\b(' + word_alternation + r')\s*(?:players?|people|persons?|golfers?|guests?)\b',
+            r'\b(' + word_alternation + r')\s*of\s*us\b',
+            r'(?:tee\s*times?|booking|reservation|round)\s*for\s*(' + word_alternation + r')\b',
+            r'\bfor\s+(' + word_alternation + r')(?!\s*(?:nights?|days?|weeks?|hours?|months?|years?|rooms?|holes?))',
+        ]
+
+        for pattern in word_patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                return word_numbers[match.group(1)]
 
         # Special golf terms - LAST PRIORITY (only if no explicit number found)
         golf_groups = {
@@ -815,12 +915,138 @@ class EnhancedEmailParser:
 
         # Lodging confidence already set in _extract_lodging_info
 
+    # Weekday abbreviations are expanded before parsing - dateparser reads
+    # "next sat" as today rather than as next Saturday.
+    WEEKDAY_ABBREVIATIONS = {
+        'mon': 'monday', 'tue': 'tuesday', 'tues': 'tuesday',
+        'wed': 'wednesday', 'wednes': 'wednesday',
+        'thu': 'thursday', 'thur': 'thursday', 'thurs': 'thursday',
+        'fri': 'friday', 'sat': 'saturday', 'satur': 'saturday',
+        'sun': 'sunday',
+    }
+
+    def _normalize_date_phrase(self, date_str: str) -> str:
+        """Expand weekday abbreviations so date libraries read them correctly"""
+        def expand(match):
+            return self.WEEKDAY_ABBREVIATIONS[match.group(0).lower()]
+
+        pattern = r'\b(?:' + '|'.join(sorted(self.WEEKDAY_ABBREVIATIONS,
+                                             key=len, reverse=True)) + r')\b'
+        return re.sub(pattern, expand, date_str, flags=re.IGNORECASE)
+
+    def _resolve_weekend(self, date_str: str) -> Optional[str]:
+        """Resolve 'this weekend' / 'next weekend' to that weekend's Saturday"""
+        date_str_lower = date_str.lower()
+        if 'weekend' not in date_str_lower:
+            return None
+
+        today = datetime.now()
+
+        if today.weekday() >= 5:
+            # Already the weekend - this weekend's Saturday is today or yesterday
+            saturday = today - timedelta(days=today.weekday() - 5)
+        else:
+            saturday = today + timedelta(days=5 - today.weekday())
+
+        if 'next' in date_str_lower or 'following' in date_str_lower:
+            saturday += timedelta(days=7)
+
+        # Never return a date in the past - a Sunday enquiry about "this weekend"
+        # can only mean today
+        if saturday.date() < today.date():
+            saturday = today
+
+        return saturday.strftime('%Y-%m-%d')
+
+    MONTH_NUMBERS = {
+        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+        'jul': 7, 'aug': 8, 'sep': 9, 'sept': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+    }
+
+    # Representative day for a vague reference to part of a month
+    VAGUE_MONTH_DAYS = {
+        'beginning': 5, 'early': 5, 'start': 5,
+        'mid': 15, 'middle': 15,
+        'late': 25, 'end': 25,
+    }
+
+    def _resolve_vague_month(self, date_str: str) -> Optional[str]:
+        """
+        Resolve "early June" / "mid October" / "end of May" to a representative
+        date in that month. Date libraries return nothing for these, so an
+        enquiry using them would otherwise look like it had no dates at all.
+        """
+        match = re.fullmatch(
+            r'(' + '|'.join(self.VAGUE_MONTH_DAYS) + r')\s+(?:of\s+)?'
+            r'(' + '|'.join(self.MONTH_NUMBERS) + r')[a-z]*\.?',
+            date_str.strip().lower()
+        )
+        if not match:
+            return None
+
+        day = self.VAGUE_MONTH_DAYS[match.group(1)]
+        month = self.MONTH_NUMBERS[match.group(2)]
+
+        today = datetime.now()
+        year = today.year
+        try:
+            candidate = datetime(year, month, day)
+        except ValueError:
+            return None
+
+        # A month already behind us means next year
+        if candidate.date() < today.date():
+            candidate = datetime(year + 1, month, day)
+
+        return candidate.strftime('%Y-%m-%d')
+
+    WEEKDAY_INDEXES = {
+        'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+        'friday': 4, 'saturday': 5, 'sunday': 6,
+    }
+
+    def _resolve_weekday_phrase(self, date_str: str) -> Optional[str]:
+        """
+        Resolve a weekday reference ("Saturday", "next Tuesday") to the next
+        occurrence of that weekday. dateparser returns today for "next saturday"
+        when today is a Saturday, which is never what an enquiry means.
+        """
+        match = re.fullmatch(
+            r'(?:(next|this|coming)\s+)?(' + '|'.join(self.WEEKDAY_INDEXES) + r')',
+            date_str.strip().lower()
+        )
+        if not match:
+            return None
+
+        today = datetime.now()
+        target = self.WEEKDAY_INDEXES[match.group(2)]
+        days_ahead = (target - today.weekday()) % 7
+        if days_ahead == 0:
+            days_ahead = 7  # "Saturday" on a Saturday means the next one
+
+        return (today + timedelta(days=days_ahead)).strftime('%Y-%m-%d')
+
     def _parse_date_flexible(self, date_str: str) -> Optional[str]:
         """Parse date string using multiple methods"""
         if not date_str or len(date_str) < 3:
             return None
 
-        date_str = date_str.strip()
+        date_str = self._normalize_date_phrase(date_str.strip())
+
+        # Weekend references need explicit handling (dateparser returns None)
+        weekend_date = self._resolve_weekend(date_str)
+        if weekend_date:
+            return weekend_date
+
+        # Weekday references ("Saturday", "next Tuesday")
+        weekday_date = self._resolve_weekday_phrase(date_str)
+        if weekday_date:
+            return weekday_date
+
+        # Vague month references ("early June", "end of May")
+        vague_date = self._resolve_vague_month(date_str)
+        if vague_date:
+            return vague_date
 
         # Try dateparser first (if available)
         if DATEPARSER_AVAILABLE:
