@@ -1775,6 +1775,38 @@ except ImportError:
     logging.warning("Claude parser module not available")
 
 
+def expand_date_range(start_date: str, end_date: str, max_days: int = 14) -> list:
+    """
+    Expand a start/end date pair into every date in between.
+
+    A group asking for "10th-13th October" wants availability checked on all
+    four days, not just the first and last.
+    """
+    if not start_date:
+        return []
+
+    if not end_date or end_date == start_date:
+        return [start_date]
+
+    try:
+        start = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end = datetime.strptime(end_date, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        logging.warning(f"⚠️  Could not expand date range {start_date} - {end_date}")
+        return [d for d in [start_date, end_date] if d]
+
+    if end < start:
+        start, end = end, start
+
+    span = (end - start).days + 1
+    if span > max_days:
+        logging.info(f"📅 Date range {start_date} - {end_date} spans {span} days, "
+                     f"limiting to first {max_days}")
+        span = max_days
+
+    return [(start + timedelta(days=offset)).strftime('%Y-%m-%d') for offset in range(span)]
+
+
 def parse_email_enhanced(subject: str, body: str, from_email: str = "", from_name: str = "") -> Dict:
     """
     Enhanced email parsing with Claude API as primary parser
@@ -1796,12 +1828,9 @@ def parse_email_enhanced(subject: str, body: str, from_email: str = "", from_nam
                 time_pref = claude_result.get('time_preference', {})
                 special_req = claude_result.get('special_requests', {})
 
-                # Build dates list
-                date_list = []
-                if dates.get('start_date'):
-                    date_list.append(dates['start_date'])
-                if dates.get('end_date') and dates.get('end_date') != dates.get('start_date'):
-                    date_list.append(dates['end_date'])
+                # Build dates list - every date in the requested range, so
+                # availability is checked on all of them
+                date_list = expand_date_range(dates.get('start_date'), dates.get('end_date'))
 
                 result = {
                     'players': claude_result.get('player_count') or 4,
